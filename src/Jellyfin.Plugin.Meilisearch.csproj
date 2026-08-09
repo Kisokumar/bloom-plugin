@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Jellyfin.Controller" Version="10.11.7" />
+        <PackageReference Include="Jellyfin.Database.Implementations" Version="10.11.7" />
+        <PackageReference Include="Jellyfin.Model" Version="10.11.7" />
+        <PackageReference Include="MeiliSearch" Version="0.18.0"/>
+        <PackageReference Include="Microsoft.Data.Sqlite" Version="[9.0.0,)"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Remove="config.html"/>
+        <EmbeddedResource Include="config.html"/>
+    </ItemGroup>
+</Project>
