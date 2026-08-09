@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Bloom</title>
+    <style>
+        #BloomConfigPage .bloom-head { display:flex; align-items:baseline; gap:12px; margin-bottom:4px; }
+        #BloomConfigPage .bloom-head h1 { margin:0; }
+        #BloomConfigPage .bloom-sub { opacity:.6; }
+        #BloomConfigPage .bloom-strip { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 24px; }
+        #BloomConfigPage .bloom-chip { background:#fff1; border-radius:20px; padding:5px 12px; font-size:13px; display:inline-flex; align-items:center; }
+        #BloomConfigPage .bloom-dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:#8b949e; margin-right:7px; }
+        #BloomConfigPage .bloom-section { background:#fff1; border-radius:8px; padding:16px 18px; margin-bottom:16px; }
+        #BloomConfigPage .bloom-section h2 { margin:0 0 2px; font-size:17px; }
+        #BloomConfigPage .bloom-tag { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:2px 7px; border-radius:4px; margin-left:8px; vertical-align:middle; }
+        #BloomConfigPage .bloom-tag.rec { background:#2ea04340; color:#3fb950; }
+        #BloomConfigPage .bloom-tag.req { background:#bb800940; color:#e3b341; }
+        #BloomConfigPage .bloom-tag.opt { background:#ffffff18; color:#8b949e; }
+        #BloomConfigPage .bloom-desc { opacity:.6; font-size:13px; margin:0 0 12px; }
+        #BloomConfigPage .bloom-row { display:flex; gap:8px; align-items:flex-end; }
+        #BloomConfigPage .bloom-row .inputContainer { flex:1; margin-bottom:0; }
+        #BloomConfigPage .bloom-test { margin:0; padding:0 14px; height:39px; white-space:nowrap; }
+        #BloomConfigPage .bloom-health { font-family:'JetBrains Mono',Consolas,monospace; font-size:12px; margin:8px 0 0; min-height:16px; }
+        #BloomConfigPage .bloom-btnrow { display:flex; gap:8px; margin-top:10px; }
+    </style>
+</head>
+<body>
+<div class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox"
+     data-role="page" id="BloomConfigPage">
+    <div data-role="content">
+        <div class="content-primary">
+            <div class="bloom-head">
+                <h1>Bloom</h1>
+                <span class="bloom-sub">semantic, natural-language search for Jellyfin</span>
+            </div>
+            <div class="bloom-strip" id="healthStrip">
+                <span class="bloom-chip"><span class="bloom-dot" id="stripGw"></span>Gateway</span>
+                <span class="bloom-chip"><span class="bloom-dot" id="stripMeili"></span>Meilisearch</span>
+                <span class="bloom-chip"><span class="bloom-dot" id="stripSidecar"></span>Sidecar</span>
+            </div>
+
+            <form id="BloomConfigForm">
+
+                <div class="bloom-section">
+                    <h2>Search gateway<span class="bloom-tag rec">recommended</span></h2>
+                    <p class="bloom-desc">Point Bloom at your search gateway and it handles everything:
+                        intent parsing, keyword + semantic fusion, enrichment phrases and reranking.
+                        Leave empty to fall back to the in-plugin path below.</p>
+                    <div class="bloom-row">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="GatewayUrl">Gateway URL</label>
+                            <input id="GatewayUrl" is="emby-input" type="text" placeholder="http://gateway:8100"/>
+                        </div>
+                        <button is="emby-button" type="button" id="gwTest" class="raised bloom-test"><span>Test</span></button>
+                    </div>
+                    <div class="bloom-health" id="gwHealth"></div>
+                </div>
+
+                <div class="bloom-section">
+                    <h2>Meilisearch<span class="bloom-tag req">required</span></h2>
+                    <p class="bloom-desc">Your library is indexed here so searches return your actual items.
+                        Required whether or not you use the gateway.</p>
+                    <div class="bloom-row">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="Url">Meilisearch URL</label>
+                            <input id="Url" is="emby-input" type="text" placeholder="http://meilisearch:7700"/>
+                        </div>
+                        <button is="emby-button" type="button" id="meiliTest" class="raised bloom-test"><span>Test</span></button>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ApiKey">Meilisearch API key</label>
+                        <input id="ApiKey" is="emby-input" name="ApiKey" type="text"/>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="IndexName">Index name</label>
+                        <input id="IndexName" is="emby-input" name="IndexName" type="text"/>
+                        <div class="fieldDescription">Optional. Defaults to the server's friendly name. Set this to share one Meilisearch instance across servers.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MatchingStrategy">Matching strategy</label>
+                        <select id="MatchingStrategy" is="emby-select" name="MatchingStrategy">
+                            <option value="last">last (default, most keywords matched)</option>
+                            <option value="all">all (only results matching every keyword)</option>
+                            <option value="frequency">frequency (prioritise rarer words)</option>
+                        </select>
+                    </div>
+                    <div class="bloom-health" id="meiliStatus"></div>
+                    <div class="bloom-btnrow">
+                        <button is="emby-button" type="button" id="reindexBtn" class="raised"><span>Reindex</span></button>
+                        <button is="emby-button" type="button" id="reconnectBtn" class="raised" style="display:none"><span>Reconnect</span></button>
+                    </div>
+                </div>
+
+                <div class="bloom-section">
+                    <h2>In-plugin semantic<span class="bloom-tag opt">fallback</span></h2>
+                    <p class="bloom-desc">Used only when no gateway is set. Runs hybrid keyword + vector search
+                        directly against Meilisearch, using an embedding sidecar. Not needed if the gateway is configured.</p>
+                    <div class="bloom-row">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="EmbedderUrl">Embedder (sidecar) URL</label>
+                            <input id="EmbedderUrl" is="emby-input" type="text" placeholder="http://sidecar:8000"/>
+                        </div>
+                        <button is="emby-button" type="button" id="sidecarTest" class="raised bloom-test"><span>Test</span></button>
+                    </div>
+                    <div class="bloom-health" id="sidecarHealth"></div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EmbedderModel">Embedding model</label>
+                        <select id="EmbedderModel" is="emby-select"></select>
+                        <div class="fieldDescription">From the sidecar's available models. Changing it re-embeds the library on save.</div>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="SemanticEnabled" is="emby-checkbox" type="checkbox"/>
+                            <span>Semantic search enabled</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            Master switch. When off, both the gateway and in-plugin semantic paths are skipped (pure keyword search).
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bloom-section">
+                    <h2>Advanced</h2>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="Debug" is="emby-checkbox" type="checkbox"/>
+                            <span>Debug output</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            Extra log output. Does not change the log level.
+                        </div>
+                    </div>
+                </div>
+
+                <button class="raised button-submit block emby-button" is="emby-button" type="submit">
+                    <span>Save</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = '3112ddc0-3e7d-499d-b1b6-5b9e89a6a476';
+            var $ = function (s) { return document.querySelector(s); };
+
+            function dot(state) {
+                var c = state === 'ok' ? '#3fb950' : state === 'down' ? '#f85149' : '#8b949e';
+                return '<span class="bloom-dot" style="background:' + c + '"></span>';
+            }
+            function stateOf(res) {
+                if (!res || res.configured === false) return 'na';
+                return res.ok ? 'ok' : 'down';
+            }
+            function probe(target, url) {
+                var params = { target: target };
+                if (url) params.url = url;
+                return ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/test', params)).catch(function () {
+                    return { target: target, ok: false, configured: true, detail: 'error' };
+                });
+            }
+            function setInline(inlineId, stripId, res) {
+                var s = stateOf(res);
+                var text = (res && res.detail) ? res.detail : (s === 'na' ? 'not configured' : (s === 'ok' ? 'ok' : 'unreachable'));
+                $(inlineId).innerHTML = dot(s) + text;
+                $(stripId).style.background = s === 'ok' ? '#3fb950' : s === 'down' ? '#f85149' : '#8b949e';
+            }
+            function testGateway() { return probe('gateway', $('#GatewayUrl').value.trim()).then(function (r) { setInline('#gwHealth', '#stripGw', r); }); }
+            function testSidecar() { return probe('sidecar', $('#EmbedderUrl').value.trim()).then(function (r) { setInline('#sidecarHealth', '#stripSidecar', r); }); }
+
+            function meiliStatus(endpoint) {
+                $('#meiliStatus').innerHTML = dot('na') + 'checking...';
+                ApiClient.get('/meilisearch/' + endpoint).then(function (r) { return r.json(); }).then(function (st) {
+                    var idx = st.indexStatus || {};
+                    var text = (st.meilisearchOk ? 'connected' : 'NOT connected')
+                        + ' · docs: ' + (idx.Items || '-')
+                        + ' · last indexed: ' + (idx.LastIndexed || '-');
+                    setInline('#meiliStatus', '#stripMeili', { ok: !!st.meilisearchOk, configured: true, detail: text });
+                    $('#reconnectBtn').style.display = st.meilisearchOk ? 'none' : '';
+                }).catch(function (e) {
+                    setInline('#meiliStatus', '#stripMeili', { ok: false, configured: true, detail: 'error: ' + e.message });
+                });
+            }
+
+            function loadModels(selected) {
+                var sel = $('#EmbedderModel');
+                var fallback = function () {
+                    sel.innerHTML = '<option value="' + (selected || '') + '">' + (selected || '(sidecar not reachable)') + '</option>';
+                };
+                ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/models')).then(function (r) {
+                    var models = (r && (r.models || r.Models)) || [];
+                    if (!models.length) { fallback(); return; }
+                    sel.innerHTML = models.map(function (x) {
+                        var key = x.key || x.Key;
+                        var dim = x.dim || x.Dim;
+                        var ml = (x.multilingual || x.Multilingual) ? ', multilingual' : '';
+                        return '<option value="' + key + '"' + (key === selected ? ' selected' : '') + '>'
+                            + key + ' (' + dim + 'd' + ml + ')</option>';
+                    }).join('');
+                }).catch(fallback);
+            }
+
+            function refreshHealth() { testGateway(); testSidecar(); meiliStatus('status'); }
+
+            function load() {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    $('#GatewayUrl').value = config.GatewayUrl || '';
+                    $('#Url').value = config.Url || '';
+                    $('#ApiKey').value = config.ApiKey || '';
+                    $('#IndexName').value = config.IndexName || '';
+                    $('#MatchingStrategy').value = config.MatchingStrategy || 'last';
+                    $('#EmbedderUrl').value = config.EmbedderUrl || '';
+                    $('#SemanticEnabled').checked = config.SemanticEnabled !== false;
+                    $('#Debug').checked = !!config.Debug;
+                    loadModels(config.EmbedderModel || '');
+                    refreshHealth();
+                    Dashboard.hideLoadingMsg();
+                });
+            }
+
+            function save(e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.GatewayUrl = $('#GatewayUrl').value.trim();
+                    config.Url = $('#Url').value.trim();
+                    config.ApiKey = $('#ApiKey').value.trim();
+                    config.IndexName = $('#IndexName').value.trim();
+                    config.MatchingStrategy = $('#MatchingStrategy').value;
+                    config.EmbedderUrl = $('#EmbedderUrl').value.trim();
+                    config.EmbedderModel = $('#EmbedderModel').value;
+                    config.SemanticEnabled = $('#SemanticEnabled').checked;
+                    config.Debug = $('#Debug').checked;
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                        refreshHealth();
+                    });
+                });
+                return false;
+            }
+
+            $('#gwTest').addEventListener('click', testGateway);
+            $('#sidecarTest').addEventListener('click', testSidecar);
+            $('#meiliTest').addEventListener('click', function () { meiliStatus('status'); });
+            $('#reindexBtn').addEventListener('click', function () { meiliStatus('reindex'); });
+            $('#reconnectBtn').addEventListener('click', function () { meiliStatus('reconnect'); });
+            $('#BloomConfigForm').addEventListener('submit', save);
+            $('#BloomConfigPage').addEventListener('pageshow', load);
+        })();
+    </script>
+</div>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Bloom Diagnostics</title></head>
+<body>
+<div class="page type-interior pluginConfigurationPage" data-role="page" id="BloomDiagnosticsPage"
+     data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div data-role="content"><div class="content-primary">
+        <h1>Bloom Diagnostics</h1>
+        <p style="opacity:.6;margin-top:0">Inspect what each search path returns and how the library is covered.
+            Settings live on the main <b>Bloom</b> plugin page.</p>
+
+        <div id="statusCards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px"></div>
+
+        <h2>Playground</h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            <input id="q" is="emby-input" type="text" placeholder="try: 80s horror but funny · movies like heat · rated pg under 90 minutes" style="flex:1"/>
+            <label style="white-space:nowrap">ratio <span id="ratioVal">0.7</span></label>
+            <input id="ratio" type="range" min="0" max="1" step="0.05" value="0.7" style="width:120px"/>
+            <button is="emby-button" id="run" class="raised button-submit"><span>Search</span></button>
+        </div>
+        <pre id="parsed" style="background:#fff1;padding:10px;font-size:12px;display:none"></pre>
+
+        <div id="gwWrap" style="display:none">
+            <h3>Gateway <span style="font-size:12px;opacity:.6">(production path)</span></h3>
+            <div id="gwIntent" style="opacity:.7;font-size:12px;margin-bottom:4px"></div>
+            <ol id="colGw"></ol>
+        </div>
+        <div style="display:flex;gap:16px">
+            <div style="flex:1"><h3>Keyword (stock)</h3><ol id="colBm25"></ol></div>
+            <div style="flex:1"><h3>Semantic (hybrid) <span style="font-size:11px;opacity:.6">fallback path</span></h3><ol id="colSem"></ol></div>
+        </div>
+
+        <h2>Actions</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button is="emby-button" id="backfill" class="raised"><span>Run backfill</span></button>
+            <span id="ctlMsg" style="opacity:.7"></span>
+        </div>
+
+        <h2>Analytics <span style="font-size:12px;opacity:.6">(since last restart)</span></h2>
+        <div id="analytics" style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px"></div>
+    </div></div>
+
+    <script type="text/javascript">
+    (() => {
+        var $ = function (s) { return document.querySelector(s); };
+        var api = function (p) { return ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/' + p)); };
+        var g = function (o, a, b) { if (!o) return undefined; return o[a] !== undefined ? o[a] : o[b]; };
+
+        function card(title, body) {
+            return '<div style="background:#fff1;padding:10px 14px;border-radius:6px;min-width:150px">'
+                + '<div style="opacity:.6;font-size:12px">' + title + '</div>'
+                + '<div style="font-size:15px">' + body + '</div></div>';
+        }
+
+        function refreshStatus() {
+            api('status').then(function (s) {
+                var idx = g(s, 'indexStatus', 'IndexStatus') || {};
+                var side = g(s, 'sidecar', 'Sidecar');
+                var meili = g(s, 'meili', 'Meili');
+                $('#statusCards').innerHTML =
+                    card('Semantic', g(s, 'semanticEnabled', 'SemanticEnabled') ? 'enabled' : 'OFF') +
+                    card('Sidecar', side ? (g(side, 'healthy', 'Healthy') ? 'healthy' : 'DOWN') : 'not configured') +
+                    card('Model', (side && g(side, 'model', 'Model')) || g(s, 'embedderModel', 'EmbedderModel') || '-') +
+                    card('Documents', meili ? g(meili, 'documents', 'Documents') : '-') +
+                    card('Last embed run', (idx.SemanticEmbedded !== undefined ? idx.SemanticEmbedded + ' embedded' : '-')) +
+                    card('Last indexed', idx.LastIndexed || '-');
+            }).catch(function (e) { $('#statusCards').innerHTML = card('Status', 'error: ' + e); });
+        }
+
+        function renderCol(el, block) {
+            if (!block) { el.innerHTML = '<li style="opacity:.5">n/a</li>'; return; }
+            var err = g(block, 'error', 'Error');
+            if (err) { el.innerHTML = '<li style="color:#f66">' + err + '</li>'; return; }
+            var hits = g(block, 'hits', 'Hits') || [];
+            var anchor = g(block, 'anchor', 'Anchor');
+            var head = anchor ? '<li style="list-style:none;margin-left:-20px;opacity:.7">similar to <b>' + anchor + '</b>:</li>' : '';
+            var body = hits.map(function (h) {
+                var score = g(h, 'score', 'Score');
+                return '<li>' + (g(h, 'name', 'Name') || '?')
+                    + ' <span style="opacity:.5">(' + (g(h, 'productionYear', 'ProductionYear') || '-') + ') '
+                    + (score != null ? score.toFixed(3) : '') + '</span></li>';
+            }).join('') || '<li style="opacity:.5">no hits</li>';
+            el.innerHTML = head + body;
+        }
+
+        function run() {
+            var q = $('#q').value.trim(); if (!q) return;
+            $('#parsed').style.display = 'block';
+            $('#parsed').textContent = 'searching...';
+            ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/debug', { q: q, ratio: $('#ratio').value }))
+                .then(function (r) {
+                    $('#parsed').textContent = JSON.stringify(g(r, 'parsed', 'Parsed'), null, 2);
+                    var gw = g(r, 'gateway', 'Gateway');
+                    if (gw) {
+                        $('#gwWrap').style.display = 'block';
+                        var gi = gw.intent || {};
+                        var bits = ['mode: ' + gi.mode];
+                        if (gi.similar_title) bits.push('anchor: "' + gi.similar_title + '"');
+                        if (gw.anchor && gw.anchor.name) bits.push('resolved: ' + gw.anchor.name);
+                        if (gi.resolved_by) bits.push(gi.resolved_by);
+                        ['decade', 'year', 'min_year', 'max_year', 'max_minutes', 'min_minutes',
+                         'popularity', 'top_n', 'modifier', 'franchise'].forEach(function (k) {
+                            if (gi[k]) bits.push(k + ': ' + gi[k]);
+                        });
+                        $('#gwIntent').textContent = bits.join(' · ');
+                        $('#colGw').innerHTML = (gw.results || []).map(function (h) {
+                            return '<li>' + (h.name || '?') + ' <span style="opacity:.5">('
+                                + (h.year || '-') + ') ' + (h.fused != null ? h.fused : '')
+                                + '</span></li>';
+                        }).join('') || '<li style="opacity:.5">no hits</li>';
+                    } else {
+                        $('#gwWrap').style.display = 'none';
+                    }
+                    renderCol($('#colBm25'), g(r, 'bm25', 'Bm25'));
+                    renderCol($('#colSem'), g(r, 'semantic', 'Semantic'));
+                });
+        }
+
+        function refreshAnalytics() {
+            api('analytics').then(function (a) {
+                var list = function (title, items, f) {
+                    items = items || [];
+                    return '<div><b>' + title + '</b><ol style="margin:4px 0">'
+                        + (items.map(f).join('') || '<li style="opacity:.5">none</li>') + '</ol></div>';
+                };
+                var modes = g(a, 'byMode', 'ByMode') || {};
+                var modeTxt = Object.keys(modes).map(function (k) { return k + ':' + modes[k]; }).join(' ') || '-';
+                var item = function (x) {
+                    return '<li>' + g(x, 'term', 'Term') + ' <span style="opacity:.5">x' + g(x, 'count', 'Count') + '</span></li>';
+                };
+                $('#analytics').innerHTML =
+                    card('Searches', g(a, 'total', 'Total')) + card('Avg', g(a, 'avgMs', 'AvgMs') + 'ms') + card('Modes', modeTxt) +
+                    list('Top queries', g(a, 'topQueries', 'TopQueries'), item) +
+                    list('Zero results', g(a, 'zeroResults', 'ZeroResults'), item);
+            }).catch(function (e) { $('#analytics').textContent = 'error: ' + e; });
+        }
+
+        $('#run').addEventListener('click', run);
+        $('#q').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+        $('#ratio').addEventListener('input', function () { $('#ratioVal').textContent = $('#ratio').value; });
+        $('#backfill').addEventListener('click', function () {
+            ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('meilisearch/semantic/backfill') })
+                .then(function () { $('#ctlMsg').textContent = 'backfill started (runs in background)'; });
+        });
+
+        document.querySelector('#BloomDiagnosticsPage').addEventListener('pageshow', function () {
+            refreshStatus(); refreshAnalytics();
+        });
+    })();
+    </script>
+</div>
+</body>
+</html>
