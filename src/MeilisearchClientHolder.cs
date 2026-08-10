@@ -10,7 +10,7 @@ public class MeilisearchClientHolder(ILogger<MeilisearchClientHolder> logger, IS
     private static readonly string[] SearchableAttributes =
     [
         "name", "sortName", "artists", "albumArtists", "originalTitle", "productionYear", "seriesName", "genres",
-        "tags", "studios", "overview", "path", "tagline"
+        "tags", "studios", "overview", "path", "tagline", "people"
     ];
 
     private readonly SemaphoreSlim _reconnectLock = new(1, 1);
@@ -113,7 +113,7 @@ public class MeilisearchClientHolder(ILogger<MeilisearchClientHolder> logger, IS
         var index = meilisearch.Index(indexName);
 
         await index.UpdateFilterableAttributesAsync(
-            ["type", "parentId", "isFolder"]
+            ["type", "parentId", "isFolder", "decade", "runtimeMinutes", "officialRating"]
         );
 
         await index.UpdateSortableAttributesAsync(
@@ -121,7 +121,8 @@ public class MeilisearchClientHolder(ILogger<MeilisearchClientHolder> logger, IS
         );
 
         await index.UpdateSearchableAttributesAsync(SearchableAttributes);
-        await index.UpdateDisplayedAttributesAsync(SearchableAttributes.Concat(["guid", "type"]));
+        await index.UpdateDisplayedAttributesAsync(
+            SearchableAttributes.Concat(["guid", "type", "decade", "runtimeMinutes", "officialRating"]));
 
         // Set ranking rules to add critic rating
         await index.UpdateRankingRulesAsync(

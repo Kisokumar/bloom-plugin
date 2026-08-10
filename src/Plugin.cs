@@ -43,8 +43,8 @@ public class Plugin : BasePlugin<Config>, IHasWebPages
 
     private EventHandler<BasePluginConfiguration> ReloadMeilisearch { get; }
 
-    public override string Name => "Meilisearch";
-    public override Guid Id => Guid.Parse("974395db-b31d-46a2-bc86-ef9aa5ac04dd");
+    public override string Name => "Bloom";
+    public override Guid Id => Guid.Parse("3112ddc0-3e7d-499d-b1b6-5b9e89a6a476");
     public static Plugin? Instance { get; private set; }
 
 
@@ -57,6 +57,14 @@ public class Plugin : BasePlugin<Config>, IHasWebPages
                 Name = Name,
                 EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.config.html",
                     GetType().Namespace)
+            },
+            new PluginPageInfo
+            {
+                Name = "BloomDiagnostics",
+                DisplayName = "Bloom",
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.semantic.html",
+                    GetType().Namespace),
+                EnableInMainMenu = true
             }
         ];
     }
@@ -65,7 +73,11 @@ public class Plugin : BasePlugin<Config>, IHasWebPages
     {
         ArgumentNullException.ThrowIfNull(configuration);
         var config = (Config)configuration;
-        var skipReload = Configuration.Url == config.Url && Configuration.ApiKey == config.ApiKey;
+        // EmbedderModel changes the vector space, so it must reindex. GatewayUrl
+        // does not: the gateway is external and its provider rebuilds lazily.
+        var skipReload = Configuration.Url == config.Url && Configuration.ApiKey == config.ApiKey
+                         && Configuration.EmbedderUrl == config.EmbedderUrl
+                         && Configuration.EmbedderModel == config.EmbedderModel;
 
         Configuration = config;
         SaveConfiguration(Configuration);
