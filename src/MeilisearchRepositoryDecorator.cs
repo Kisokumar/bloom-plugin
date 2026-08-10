@@ -13,6 +13,7 @@ namespace Jellyfin.Plugin.Meilisearch;
 public class MeilisearchRepositoryDecorator(
     IItemRepository inner,
     MeilisearchClientHolder clientHolder,
+    Adapters.JellyfinSearchAdapter searchAdapter,
     ILogger<MeilisearchRepositoryDecorator> logger
 ) : IItemRepository
 {
@@ -59,29 +60,11 @@ public class MeilisearchRepositoryDecorator(
             var matchingStrategy = Plugin.Instance?.Configuration.MatchingStrategy ?? "last";
             var limit = Math.Max(filter.Limit is > 0 ? filter.Limit.Value : 30, 1);
             var typeFilter = string.Join(" OR ", types.Select(t => $"type = \"{t}\""));
-            var result = await index.SearchAsync<MeilisearchItem>(
-                searchTerm,
-                new SearchQuery
-                {
-                    Filter = typeFilter,
-                    Offset = filter.StartIndex ?? 0,
-                    Limit = limit,
-                    MatchingStrategy = matchingStrategy,
-                }
-            ).ConfigureAwait(false);
-
-            List<Guid> ids = [];
-            foreach (var hit in result.Hits)
-            {
-                if (Guid.TryParse(hit.Guid, out var id))
-                    ids.Add(id);
-                else
-                    logger.LogWarning("Skipping Meilisearch hit with invalid GUID '{Guid}'", hit.Guid);
-            }
-
-            var totalCount = result is SearchResult<MeilisearchItem> searchResult
-                ? searchResult.EstimatedTotalHits
-                : ids.Count;
+            // Semantic handoff: classify → (embed) → hybrid/similar → ordered ids.
+            // With no embedder configured this is byte-identical to the stock query.
+            var (ids, totalCount) = await searchAdapter.SearchAsync(
+                index, searchTerm, typeFilter, filter.StartIndex ?? 0, limit, matchingStrategy,
+                CancellationToken.None).ConfigureAwait(false);
             return new SearchResultData(ids, totalCount);
         }
         catch (MeilisearchCommunicationError e)

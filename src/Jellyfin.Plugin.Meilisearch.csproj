@@ -4,6 +4,8 @@
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <Version>1.11.1.30</Version>
+        <AssemblyVersion>1.11.1.30</AssemblyVersion>
     </PropertyGroup>
 
     <ItemGroup>
@@ -17,5 +19,7 @@
     <ItemGroup>
         <None Remove="config.html"/>
         <EmbeddedResource Include="config.html"/>
+        <None Remove="semantic.html"/>
+        <EmbeddedResource Include="semantic.html"/>
     </ItemGroup>
 </Project>

@@ -19,5 +19,9 @@ public record MeilisearchItem(
     double? CriticRating,
     string? Path,
     string? Tagline,
-    string? SortName
+    string? SortName,
+    string[]? People = null,
+    string? OfficialRating = null,
+    int? RuntimeMinutes = null,
+    string? Decade = null
 );
