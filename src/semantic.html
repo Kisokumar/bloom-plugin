@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Bloom</title>
+<style>
+    #BloomPage .dim { opacity:.6; }
+    #BloomPage #statusCards { display:flex; gap:12px; flex-wrap:wrap; margin:14px 0 20px; }
+    #BloomPage .bcard { background:#fff1; border-radius:6px; padding:10px 14px; min-width:130px; }
+    #BloomPage .bct { opacity:.6; font-size:12px; }
+    #BloomPage .bcb { font-size:15px; }
+    #BloomPage .qbar { display:flex; gap:8px; margin:8px 0 18px; }
+    #BloomPage .qbar input { flex:1; }
+    #BloomPage #split { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+    #BloomPage #thinkPane { flex:1 1 44%; min-width:280px; }
+    #BloomPage main { flex:1 1 44%; min-width:280px; }
+    #BloomPage h3 { margin:0 0 10px; font-size:16px; }
+    #BloomPage .tstage { margin-bottom:16px; }
+    #BloomPage .tstage h4 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; opacity:.55; }
+    #BloomPage .pills { display:flex; flex-wrap:wrap; gap:6px; }
+    #BloomPage .vp { position:relative; display:inline-flex; align-items:center; gap:7px; border:1px solid var(--c); border-radius:7px; padding:5px 10px; font-size:13px; overflow:hidden; background:#ffffff08; }
+    #BloomPage .vp.dead { opacity:.42; border-style:dashed; }
+    #BloomPage .vf { position:absolute; left:0; top:0; bottom:0; background:var(--c); opacity:.16; }
+    #BloomPage .vl { position:relative; font-weight:600; }
+    #BloomPage .vn { position:relative; background:var(--c); color:#04121a; border-radius:9px; padding:0 7px; font-size:11px; font-weight:700; }
+    #BloomPage #results { list-style:none; padding:0; margin:0; }
+    #BloomPage #results li { padding:10px; border-bottom:1px solid #ffffff14; }
+    #BloomPage .rh { display:flex; align-items:center; gap:8px; }
+    #BloomPage .rn { font-weight:600; }
+    #BloomPage .rsc { margin-left:auto; font-variant-numeric:tabular-nums; }
+    #BloomPage .ch { background:#e86ab033; color:#e86ab0; border-radius:9px; padding:1px 7px; font-size:11px; white-space:nowrap; }
+    #BloomPage .lgs { display:flex; gap:5px; margin-top:6px; flex-wrap:wrap; }
+    #BloomPage .lg { font-size:11px; border:1px solid var(--c); color:var(--c); border-radius:5px; padding:1px 6px; opacity:.85; }
+    #BloomPage .mp { font-size:12px; margin-top:5px; }
+    #BloomPage .raw { margin-top:14px; }
+    #BloomPage .raw pre { background:#fff1; padding:10px; font-size:12px; overflow:auto; }
+    #BloomPage #analytics { display:flex; gap:24px; flex-wrap:wrap; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="page type-interior pluginConfigurationPage" data-role="page" id="BloomPage"
+     data-require="emby-input,emby-button">
+    <div data-role="content"><div class="content-primary">
+        <h1>Bloom</h1>
+        <p class="dim" style="margin-top:0">Test a search the way a client would, and see how Bloom answered it.
+            Settings live on the <a href="#/configurationpage?name=Bloom">Bloom settings page</a>.</p>
+
+        <div id="statusCards"></div>
+
+        <div class="qbar">
+            <input id="q" is="emby-input" type="text"
+                   placeholder="80s horror but funny · movies like heat · rated pg under 90 minutes"/>
+            <button is="emby-button" id="run" class="raised button-submit"><span>Search</span></button>
+        </div>
+
+        <div id="split" style="display:none">
+            <aside id="thinkPane">
+                <h3>How Bloom answered this <span id="thinkMeta" class="dim"></span></h3>
+                <div id="think"></div>
+                <details class="raw"><summary>raw intent + trace</summary><pre id="rawpre"></pre></details>
+            </aside>
+            <main>
+                <h3>Results <span id="resMeta" class="dim"></span></h3>
+                <ol id="results"></ol>
+            </main>
+        </div>
+
+        <h2>Actions</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button is="emby-button" id="backfill" class="raised"><span>Run backfill</span></button>
+            <span id="ctlMsg" class="dim"></span>
+        </div>
+
+        <h2>Analytics <span class="dim" style="font-size:12px">(since last restart)</span></h2>
+        <div id="analytics"></div>
+    </div></div>
+
+    <script type="text/javascript">
+    (function () {
+        var $ = function (s) { return document.querySelector(s); };
+        var api = function (p) { return ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/' + p)); };
+        var g = function (o, a, b) { if (!o) return undefined; return o[a] !== undefined ? o[a] : o[b]; };
+        var esc = function (s) {
+            return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+            });
+        };
+
+        function card(title, body) {
+            return '<div class="bcard"><div class="bct">' + title + '</div><div class="bcb">' + body + '</div></div>';
+        }
+
+        function refreshStatus() {
+            api('status').then(function (s) {
+                var idx = g(s, 'indexStatus', 'IndexStatus') || {};
+                var side = g(s, 'sidecar', 'Sidecar');
+                var meili = g(s, 'meili', 'Meili');
+                $('#statusCards').innerHTML =
+                    card('Semantic', g(s, 'semanticEnabled', 'SemanticEnabled') ? 'enabled' : 'OFF') +
+                    card('Sidecar', side ? (g(side, 'healthy', 'Healthy') ? 'healthy' : 'DOWN') : 'not configured') +
+                    card('Model', (side && g(side, 'model', 'Model')) || g(s, 'embedderModel', 'EmbedderModel') || '-') +
+                    card('Documents', meili ? g(meili, 'documents', 'Documents') : '-') +
+                    card('Last indexed', idx.LastIndexed || '-');
+            }).catch(function (e) { $('#statusCards').innerHTML = card('Status', 'error: ' + e); });
+        }
+
+        // Plain-language names for each pipeline stage the gateway trace reports.
+        var SNAME = {
+            input: 'You asked for', normalize: 'Tidied up', classify: 'What I read into it',
+            route: 'How I searched', retrieve: 'Where I looked', fuse: 'Merged the lists',
+            filter: 'Trimmed', output: 'Showed you'
+        };
+        var ORDER = ['input', 'normalize', 'classify', 'route', 'retrieve', 'fuse', 'filter', 'output'];
+
+        // Leg colours (a result could point back at the leg that produced it) and
+        // per-stage colours, mirrored from the gateway tool so the two read alike.
+        var LEGC = {
+            lexical: '#e8a33d', queries: '#6ec6a0', vibe: '#b98bff', plot: '#57a7ff',
+            cast: '#e86ab0', franchise: '#4fb6c4', catalog: '#9aa0a6'
+        };
+        var SCOL = {
+            input: '#8a8a8a', normalize: '#c98b6b', classify: '#d9a441', route: '#7ab8ff',
+            retrieve: '#b98bff', fuse: '#6ec6a0', filter: '#ef7070', output: '#4ab87a'
+        };
+
+        // A lighter port of the gateway tool's visual thinking: one row per pipeline
+        // stage, each step a pill. Retrieval legs carry a match count with a fill bar
+        // scaled to the busiest leg, so "what matched, and how much" reads at a glance;
+        // the reason is on hover. Steps ruled out collapse to one dim chip. The 4-mode
+        // toggle and animation stay in the internal tool.
+        function renderThinking(trace) {
+            var by = {};
+            trace.forEach(function (s) {
+                var st = s.stage; if (!by[st]) by[st] = {};
+                var k = s.id != null ? s.id : s.label;
+                by[st][k] = by[st][k] ? Object.assign(by[st][k], s) : Object.assign({}, s);
+            });
+            var peak = 1;
+            Object.keys(by).forEach(function (st) {
+                Object.keys(by[st]).forEach(function (k) {
+                    var n = by[st][k];
+                    if (n.taken && n.n != null) peak = Math.max(peak, n.n);
+                });
+            });
+            function pill(n, st) {
+                var c = LEGC[n.id] || SCOL[st] || '#888';
+                var l = (n.plain && n.plain.label) || n.label || '';
+                var why = (n.plain && n.plain.reason) || n.reason || '';
+                var pct = n.n == null ? 0 : Math.max(6, Math.round(100 * n.n / peak));
+                return '<span class="vp" style="--c:' + c + '" title="' + esc(why) + '">'
+                    + (n.n != null ? '<span class="vf" style="width:' + pct + '%"></span>' : '')
+                    + '<span class="vl">' + esc(l) + '</span>'
+                    + (n.n != null ? '<span class="vn">' + n.n + '</span>' : '')
+                    + '</span>';
+            }
+            var html = '';
+            ORDER.forEach(function (st) {
+                if (!by[st]) return;
+                var steps = Object.keys(by[st]).map(function (k) { return by[st][k]; });
+                var on = steps.filter(function (n) { return n.taken; });
+                var off = steps.filter(function (n) { return !n.taken; });
+                if (!on.length) return;
+                var offChip = off.length ? '<span class="vp dead" style="--c:' + (SCOL[st] || '#888')
+                    + '" title="' + esc(off.map(function (n) { return (n.plain && n.plain.label) || n.label || ''; }).join(', '))
+                    + '">+' + off.length + ' ruled out</span>' : '';
+                html += '<section class="tstage"><h4>' + esc(SNAME[st] || st) + '</h4><div class="pills">'
+                    + on.map(function (n) { return pill(n, st); }).join('') + offChip
+                    + '</div></section>';
+            });
+            return html || '<p class="dim">no trace</p>';
+        }
+
+        // Each result names the legs that surfaced it, coloured to match the pills
+        // above, so a row points back at the thinking that produced it.
+        function renderResults(hits) {
+            if (!hits || !hits.length) return '<li class="dim">no results</li>';
+            return hits.map(function (h) {
+                var name = g(h, 'name', 'Name') || '?';
+                var year = g(h, 'year', 'ProductionYear') || g(h, 'productionYear', '') || '';
+                var score = h.fused != null ? h.fused : g(h, 'score', 'Score');
+                var srcs = h.sources || {};
+                var legs = Object.keys(srcs).map(function (k) {
+                    var rank = srcs[k] && srcs[k].rank != null ? ' rank ' + srcs[k].rank : '';
+                    return '<span class="lg" style="--c:' + (LEGC[k] || '#888') + '" title="' + esc(k + rank) + '">' + esc(k) + '</span>';
+                }).join('');
+                var cast = h.cast_hits ? '<span class="ch" title="top-billed cast matched">cast ' + h.cast_hits + '</span>' : '';
+                var phrase = h.matched_phrase ? '<div class="mp dim">“' + esc(h.matched_phrase) + '”</div>' : '';
+                return '<li><div class="rh"><span class="rn">' + esc(name) + '</span> <span class="dim">('
+                    + (year || '-') + ')</span>' + cast
+                    + '<span class="rsc dim">' + (score != null ? (typeof score === 'number' ? score.toFixed(3) : score) : '') + '</span></div>'
+                    + (legs ? '<div class="lgs">' + legs + '</div>' : '') + phrase + '</li>';
+            }).join('');
+        }
+
+        function run() {
+            var q = $('#q').value.trim(); if (!q) return;
+            $('#split').style.display = 'flex';
+            $('#think').innerHTML = '<p class="dim">thinking…</p>';
+            $('#results').innerHTML = '<li class="dim">searching…</li>';
+            ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/debug', { q: q })).then(function (r) {
+                $('#rawpre').textContent = JSON.stringify(g(r, 'parsed', 'Parsed'), null, 2);
+                var gw = g(r, 'gateway', 'Gateway');
+                if (gw && gw.trace && gw.trace.length) {
+                    var gi = gw.intent || {};
+                    $('#thinkMeta').textContent = gi.mode ? '· ' + gi.mode + ' route' : '';
+                    $('#think').innerHTML = renderThinking(gw.trace);
+                    $('#resMeta').textContent = 'gateway';
+                    $('#results').innerHTML = renderResults(gw.results);
+                    return;
+                }
+                // No gateway configured: the search ran in-plugin, which has no rich trace.
+                $('#thinkMeta').textContent = '';
+                $('#think').innerHTML = '<p class="dim">No gateway is configured, so this search ran in-plugin '
+                    + '(keyword + hybrid vectors). The step-by-step reasoning is a gateway feature.</p>';
+                var sem = g(r, 'semantic', 'Semantic'), bm = g(r, 'bm25', 'Bm25');
+                var useSem = sem && (g(sem, 'hits', 'Hits') || []).length;
+                var block = useSem ? sem : bm;
+                $('#resMeta').textContent = useSem ? 'in-plugin semantic' : 'keyword';
+                $('#results').innerHTML = renderResults(block ? (g(block, 'hits', 'Hits') || []) : []);
+            }).catch(function (e) {
+                $('#think').innerHTML = '<p class="dim">error: ' + esc(e && e.message || e) + '</p>';
+                $('#results').innerHTML = '';
+            });
+        }
+
+        function refreshAnalytics() {
+            api('analytics').then(function (a) {
+                var list = function (title, items, f) {
+                    items = items || [];
+                    return '<div><b>' + title + '</b><ol style="margin:4px 0">'
+                        + (items.map(f).join('') || '<li class="dim">none</li>') + '</ol></div>';
+                };
+                var modes = g(a, 'byMode', 'ByMode') || {};
+                var modeTxt = Object.keys(modes).map(function (k) { return k + ':' + modes[k]; }).join(' ') || '-';
+                var item = function (x) {
+                    return '<li>' + esc(g(x, 'term', 'Term')) + ' <span class="dim">x' + g(x, 'count', 'Count') + '</span></li>';
+                };
+                $('#analytics').innerHTML =
+                    card('Searches', g(a, 'total', 'Total')) + card('Avg', g(a, 'avgMs', 'AvgMs') + 'ms') + card('Modes', modeTxt) +
+                    list('Top queries', g(a, 'topQueries', 'TopQueries'), item) +
+                    list('Zero results', g(a, 'zeroResults', 'ZeroResults'), item);
+            }).catch(function (e) { $('#analytics').textContent = 'error: ' + e; });
+        }
+
+        $('#run').addEventListener('click', run);
+        $('#q').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+        $('#backfill').addEventListener('click', function () {
+            ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('meilisearch/semantic/backfill') })
+                .then(function () { $('#ctlMsg').textContent = 'backfill started (runs in background)'; });
+        });
+
+        $('#BloomPage').addEventListener('pageshow', function () { refreshStatus(); refreshAnalytics(); });
+    })();
+    </script>
+</div>
+</body>
+</html>
