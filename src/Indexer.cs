@@ -32,11 +32,17 @@ public abstract class Indexer(MeilisearchClientHolder clientHolder, ILogger<Inde
             return;
         }
 
-        await index.AddDocumentsInBatchesAsync(items, batchSize: 5000, primaryKey: "guid");
+        // Update (not replace) semantics: replacing docs would wipe the _vectors
+        // pushed separately by the semantic indexer.
+        await index.UpdateDocumentsInBatchesAsync(items, batchSize: 5000, primaryKey: "guid");
         logger.LogInformation("Upload {COUNT} items to Meilisearch", items.Count);
         Status["Items"] = items.Count.ToString();
         Status["LastIndexed"] = DateTime.Now.ToString(CultureInfo.CurrentCulture);
+        await PostIndexAsync(meilisearchClient, index, items);
     }
+
+    protected virtual Task PostIndexAsync(MeilisearchClient client, Index index, ImmutableList<MeilisearchItem> items)
+        => Task.CompletedTask;
 
     protected abstract Task<ImmutableList<MeilisearchItem>> GetItems(IReadOnlySet<string> includedTypes);
 }
