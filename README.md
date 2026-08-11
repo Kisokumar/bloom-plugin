@@ -1,103 +1,76 @@
-# Meilisearch Plugin for Jellyfin
+# Bloom
 
-A plugin for Jellyfin that improves search by utilizing Meilisearch as a search engine. Search logic is offloaded to a Meilisearch instance, and the response from Jellyfin is modified 
+Semantic, natural-language search for Jellyfin.
 
-Improved:
-* Speed
-* Results _([fuzzy matching](https://en.wikipedia.org/wiki/Approximate_string_matching), typos)_
+Ask for what you mean, not just what a title is called: *"80s horror but funny"*,
+*"movies like Heat"*, *"rated PG under 90 minutes"*. Bloom intercepts Jellyfin's
+search and answers it with keyword + meaning-aware ranking, then falls back
+cleanly to fast keyword search when the extras aren't configured.
 
-> [!NOTE]
-> As long as your client uses `/Items` endpoint for search, it should be supported seamlessly _I guess_
+This repo is only the Jellyfin side of Bloom: the plugin that hooks into
+Jellyfin's search, plus its configuration and diagnostics UI. The search itself —
+intent parsing, keyword + semantic fusion, enrichment, reranking — lives in the
+Bloom gateway and is not part of this codebase.
 
-> Inspired by [JellySearch](https://gitlab.com/DomiStyle/jellysearch).
+That Jellyfin integration is a soft fork of
+[arnesacnussem's Meilisearch plugin](https://github.com/arnesacnussem/jellyfin-plugin-meilisearch),
+which is where the repository decorator, Meilisearch indexing and plugin
+scaffolding come from. None of Bloom's ranking or models is inherited from it.
 
----
+## How it works
 
-### Setup instructions
+Bloom decorates Jellyfin's item repository, so any client that searches through
+`/Items` is covered with no client changes. A query is answered by the first
+tier that can:
 
-1. **Setup a Meilisearch instance** _(maybe a hosted one in the cloud will also work, but I don't recommend)_
-    - Docker is recommended. Example `docker-compose.yml`:
-       ```
-       services:
-          meilisearch:
-            container_name: meilisearch
-            image: getmeili/meilisearch:v1.34 # older versions may have compatibility issues
-            restart: unless-stopped
-        
-            environment:
-              MEILI_ENV: production
-              MEILI_NO_ANALYTICS: "true"
-              MEILI_MASTER_KEY: super-secret-key
-        
-            volumes:
-              # meilisearch's data
-              - ./data:/meili_data
-        
-            ports:
-              - 7700:7700
-       ```
-3. **Install the Meilisearch plugin**
-    - In Jellyfin:
-        1. Add the plugin Repository:
-            ```
-            https://raw.githubusercontent.com/arnesacnussem/jellyfin-plugin-meilisearch/refs/heads/master/manifest.json
-            ```
-        2. Install the Meilisearch plugin
-        3. Restart Jellyfin Server
+1. **Gateway** (recommended) — a standalone Bloom search service owns intent
+   parsing, keyword + semantic fusion, enrichment phrases and reranking.
+2. **In-plugin semantic** (fallback) — hybrid keyword + vector search run
+   directly against Meilisearch using an embedding sidecar.
+3. **Keyword** — plain Meilisearch (typo tolerance, prefix matching). Always the
+   floor: if the gateway is down or nothing semantic is configured, search still
+   works.
 
-4. **Configure the Meilisearch plugin**
-   - In Meilisearch plugin's page:    
-       1. **Meilisearch URL**: URL to your Meilisearch instance, as seen by Jellyfin _(example: `http://meilisearch:7700`)_
-       2. **Meilisearch Api Key**: API key to access your Meilisearch instance _(if required)_ _(example: `super-secret-key`)_
-       3. Click `Save`
-       4. The plugin's page should show a healthy status
-           - Example:
-              ```
-              {
-                  "meilisearch": "Server: available",
-                  "meilisearchOk": true,
-                  "averageSearchTime": "0ms",
-                  "indexStatus": {
-                    "Database": "Data Source=/config/data/jellyfin.db;Cache=Default;Default Timeout=30;Pooling=True",
-                    "Items": "20569",
-                    "LastIndexed": "1/28/2026 4:10:01 PM"
-                  }
-                }
-              ```
+Your library is indexed into Meilisearch so results are your actual items, with
+permissions and user filters preserved.
 
-> [!NOTE]
-> You can also set the environment variables in Jellyfin, to configure the plugin without editing the Jellyfin UI: `MEILI_URL` and `MEILI_MASTER_KEY`
+## Requirements
 
-> [!NOTE]
-> If you want share one Meilisearch instance across multiple Jellyfin instance, you can fill the `Meilisearch Index Name`, if leaving empty, it will use the server name.
+- Jellyfin `10.11.x`
+- A [Meilisearch](https://www.meilisearch.com/) instance (required for the
+  keyword layer and the library index)
+- Optional, for semantic search: an embedding sidecar and/or a Bloom gateway
 
-5. Test Meilisearch plugin search
-    1. Try Jellyfin search
-    2. Issues? Check **Jellyfin's logs** and **Meilisearch's logs**
+## Install
 
-    ---
+1. Jellyfin Dashboard -> Plugins -> Repositories -> add:
+   ```
+   https://raw.githubusercontent.com/Kisokumar/bloom-plugin/refs/heads/main/manifest.json
+   ```
+2. Catalog -> install **Bloom** -> restart Jellyfin.
 
-Index will update on following events:
+## Configure
 
-- Server start
-- Configuration change
-- Library scan complete
-- Update index task being triggered
+Open the **Bloom** plugin page. Everything is on one page, with a Test button and
+live status for each connection:
 
----
+- **Search gateway** — the Bloom gateway URL (leave empty to use the fallback).
+- **Meilisearch** — URL, API key, index name, matching strategy. Required.
+- **In-plugin semantic** — sidecar URL and embedding model, used only when no
+  gateway is set.
 
-### How it works
+Clearing the gateway URL reverts to in-plugin search instantly; disabling
+semantic search reverts to pure keyword search.
 
-The core feature, which is to mutate the search request, is done by injecting an [`ActionFilter`](https://learn.microsoft.com/en-us/aspnet/core/mvc/controllers/filters?view=aspnetcore-8.0#action-filters).
-So it may only support a few versions of Jellyfin. At the moment I'm using `Jellyfin 10.11.0`,
-but it should work on other versions as long as the required parameter name of `/Items` endpoint doesn't change.
+The **Bloom Diagnostics** page has a search playground (compare keyword vs
+semantic vs gateway), coverage status, and analytics.
 
----
+## Environment variables
 
-###
+The Meilisearch connection can also be set without the UI: `MEILI_URL` and
+`MEILI_MASTER_KEY`.
 
-I've seen JellySearch, which is a wonderful project, but I don't really like setting up a reverse proxy or any of that hassle.
+## License
 
-So I am writing this, but it still requires a Meilisearch instance.
-
-At this moment, only the `/Items` endpoint is affected by this plugin, but it still improves a lot on my 200k items library.
+GPLv3. See [LICENSE](LICENSE). The Jellyfin integration is a soft fork of
+arnesacnussem's Meilisearch plugin.
