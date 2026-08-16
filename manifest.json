@@ -1,0 +1,21 @@
+[
+    {
+        "guid": "3112ddc0-3e7d-499d-b1b6-5b9e89a6a476",
+        "name": "Bloom",
+        "description": "Bloom brings natural-language, meaning-aware search to Jellyfin. Ask for \"80s horror but funny\" or \"movies like Heat\" and get ranked results, backed by a search gateway with keyword + semantic fusion and reranking. Degrades cleanly to fast keyword search (Meilisearch) when the gateway is absent. Soft fork of the Meilisearch plugin by a.sac.\n",
+        "overview": "Semantic, natural-language search for your Jellyfin library",
+        "owner": "bloom",
+        "category": "General",
+        "versions": [
+            {
+                "version": "1.11.1.32",
+                "changelog": "- [765483f] Bloom: semantic search for Jellyfin\n- [b3240b3] Baseline: arnesacnussem/jellyfin-plugin-meilisearch @ 95f5916",
+                "targetAbi": "10.11.7.0",
+                "sourceUrl": "https://github.com/Kisokumar/bloom-plugin/releases/download/1.11.1.32/bloom_1.11.1.32.zip",
+                "checksum": "86e2fe7b1120f8ce7b7c7128e853de50",
+                "timestamp": "2026-08-11T11:43:40Z"
+            }
+        ],
+        "imageUrl": "https://raw.githubusercontent.com/Kisokumar/bloom-plugin/main/src/logo.png"
+    }
+]
