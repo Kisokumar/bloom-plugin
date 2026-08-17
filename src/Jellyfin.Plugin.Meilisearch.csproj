@@ -4,6 +4,8 @@
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <Version>1.11.1.32</Version>
+        <AssemblyVersion>1.11.1.32</AssemblyVersion>
     </PropertyGroup>
 
     <ItemGroup>
@@ -17,5 +19,13 @@
     <ItemGroup>
         <None Remove="config.html"/>
         <EmbeddedResource Include="config.html"/>
+        <None Remove="semantic.html"/>
+        <EmbeddedResource Include="semantic.html"/>
     </ItemGroup>
+    <ItemGroup>
+        <!-- the paging and fall-through rules are internal on purpose: they are
+             implementation, but every search depends on them being right -->
+        <InternalsVisibleTo Include="Jellyfin.Plugin.Meilisearch.Tests"/>
+    </ItemGroup>
+
 </Project>
