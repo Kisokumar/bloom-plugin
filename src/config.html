@@ -2,185 +2,524 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Meilisearch</title>
+    <title>Bloom</title>
+    <style>
+        /* Hierarchy: one focal point (the verdict), then the setting that produces
+           it, then everything else de-emphasised. Sizes stay in a tight dashboard
+           range -- 26 / 15 / 13 / 12 -- and colour is spent only on the verdict
+           and on the single action worth taking next. */
+        #BloomConfigPage .content-primary { max-width: 780px; }
+        #BloomConfigPage .b-head { display:flex; align-items:baseline; gap:12px; margin:0 0 18px; }
+        #BloomConfigPage .b-head h1 { margin:0; }
+        #BloomConfigPage .b-head a { margin-left:auto; font-size:13px; opacity:.65; text-decoration:none; }
+        #BloomConfigPage .b-head a:hover { opacity:1; text-decoration:underline; }
+
+        /* Reserved height: the verdict text changes on every poll, and without a
+           floor the block collapses and expands, shifting the whole page. */
+        #BloomConfigPage .b-verdict { display:flex; align-items:flex-start; gap:14px; padding:22px 24px;
+            background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:12px 12px 0 0;
+            min-height:126px; box-sizing:border-box; transition:opacity .12s ease; }
+        #BloomConfigPage .b-verdict.busy { opacity:.55; }
+        #BloomConfigPage .b-vdot { width:12px; height:12px; border-radius:50%; margin-top:9px; flex:none; background:#8b949e; }
+        #BloomConfigPage .b-vmain { flex:1; min-width:0; }
+        #BloomConfigPage .b-vtitle { font-size:26px; font-weight:700; line-height:1.2; letter-spacing:-.02em; }
+        #BloomConfigPage .b-vwhy { font-size:13px; opacity:.65; margin-top:5px; line-height:1.5; min-height:19px; }
+        #BloomConfigPage .b-vnext { font-size:13.5px; margin-top:11px; font-weight:600; min-height:20px; }
+        #BloomConfigPage .b-vnext.act { color:#58a6ff; }
+        #BloomConfigPage .b-vnext.bad { color:#f85149; }
+        #BloomConfigPage .b-refresh { margin:0; height:30px; padding:0 12px; font-size:12px; flex:none; }
+        #BloomConfigPage .b-facts { display:flex; gap:26px; flex-wrap:wrap; padding:0 25px 18px;
+            background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-top:none;
+            border-radius:0 0 12px 12px; margin:0 0 24px; min-height:38px; box-sizing:border-box; }
+        #BloomConfigPage .b-fact b { display:block; font-size:16px; font-weight:650; font-variant-numeric:tabular-nums; }
+        #BloomConfigPage .b-fact span { font-size:11.5px; opacity:.55; text-transform:uppercase; letter-spacing:.06em; }
+
+        #BloomConfigPage h2 { margin:0 0 3px; font-size:15px; font-weight:650; }
+        #BloomConfigPage .b-sec { margin:0 0 26px; }
+        #BloomConfigPage .b-hint { opacity:.6; font-size:12.5px; line-height:1.55; margin:0 0 14px; }
+        #BloomConfigPage .b-row { display:flex; gap:10px; align-items:flex-end; }
+        #BloomConfigPage .b-row .inputContainer { flex:1; margin-bottom:0; }
+        #BloomConfigPage .b-btn { margin:0; height:39px; padding:0 15px; white-space:nowrap; }
+        #BloomConfigPage .b-note { font-size:12.5px; margin:9px 0 0; line-height:1.5; opacity:.8; min-height:18px; }
+        #BloomConfigPage .b-note.warn { color:#e3b341; opacity:1; }
+
+        /* Ordered steps, not a list of buttons: which one to press depends on what
+           is already done, so state is the primary signal and only the actionable
+           step gets a solid button. */
+        #BloomConfigPage .b-steps { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+        #BloomConfigPage .b-step { display:flex; align-items:flex-start; gap:14px; padding:14px 16px;
+            background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:9px; }
+        #BloomConfigPage .b-step.now { background:rgba(88,166,255,.09); border-color:rgba(88,166,255,.4); }
+        #BloomConfigPage .b-step.done { opacity:.5; }
+        #BloomConfigPage .b-step.opt { opacity:.85; }
+        #BloomConfigPage .b-step.opt .b-num { background:#30363d; color:#c9d1d9; }
+        #BloomConfigPage .b-step.opt .b-state { color:#8b949e; }
+        #BloomConfigPage .b-step.wait { opacity:.4; }
+        #BloomConfigPage .b-num { width:22px; height:22px; border-radius:50%; flex:none; margin-top:1px;
+            display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:700;
+            background:rgba(255,255,255,.1); }
+        #BloomConfigPage .b-step.now .b-num { background:#58a6ff; color:#0d1117; }
+        #BloomConfigPage .b-step.done .b-num { background:#3fb950; color:#0d1117; }
+        #BloomConfigPage .b-step button { margin:0; height:34px; padding:0 16px; font-size:12.5px;
+            flex:none; min-width:104px; align-self:center; }
+        #BloomConfigPage .b-stxt { flex:1; min-width:0; }
+        #BloomConfigPage .b-stxt .b-title { font-size:14px; font-weight:650; line-height:1.3; }
+        #BloomConfigPage .b-stxt .b-desc { font-size:12.5px; opacity:.62; margin-top:5px; line-height:1.5; }
+        #BloomConfigPage .b-stxt .b-state { font-size:12px; margin-top:7px; font-weight:600; }
+        #BloomConfigPage .b-step.now .b-state { color:#58a6ff; }
+        #BloomConfigPage .b-step.done .b-state { color:#3fb950; }
+
+        #BloomConfigPage details.b-adv { border-top:1px solid rgba(255,255,255,.08); padding-top:16px; }
+        #BloomConfigPage details.b-adv > summary { cursor:pointer; font-size:13px; opacity:.65; list-style:none; padding:2px 0; }
+        #BloomConfigPage details.b-adv > summary::-webkit-details-marker { display:none; }
+        #BloomConfigPage details.b-adv > div { padding-top:16px; }
+        #BloomConfigPage pre.b-log { background:#0006; padding:11px; font-size:11.5px; max-height:210px;
+            overflow:auto; margin-top:10px; display:none; font-family:'JetBrains Mono',Consolas,monospace; }
+    </style>
 </head>
 <body>
 <div class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox"
-     data-role="page"
-     id="MeilisearchConfigPage">
+     data-role="page" id="BloomConfigPage">
     <div data-role="content">
         <div class="content-primary">
-            <div>
-                <svg width="495" height="74" viewBox="0 0 495 74" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M181.842 42.5349C181.842 37.6137 184.201 34.715 188.718 34.715C192.965 34.715 194.381 37.7486 194.381 41.6585V62.6238H203.953V40.5799C203.953 32.3556 199.639 26.4907 191.145 26.4907C186.089 26.4907 182.516 28.0412 179.415 31.4792C177.393 28.3782 173.955 26.4907 169.168 26.4907C164.112 26.4907 160.607 28.5805 158.989 31.614V27.2996H150.158V62.6238H159.731V42.3326C159.731 37.6137 162.157 34.715 166.607 34.715C170.854 34.715 172.269 37.7486 172.269 41.6585V62.6238H181.842V42.5349Z" fill="white"/>
-                <path d="M243.245 47.7256C243.245 47.7256 243.379 46.4448 243.379 44.8943C243.379 34.4454 236.301 26.4907 225.852 26.4907C215.403 26.4907 208.123 34.4454 208.123 44.8943C208.123 55.7477 215.471 63.4327 225.92 63.4327C234.077 63.4327 240.548 58.5116 242.638 51.3659H232.998C231.852 53.9276 229.088 55.2084 226.189 55.2084C221.403 55.2084 218.302 52.5793 217.628 47.7256H243.245ZM225.785 34.1757C230.234 34.1757 233.133 36.8722 233.807 40.8495H217.763C218.572 36.8048 221.403 34.1757 225.785 34.1757Z" fill="white"/>
-                <path d="M244.791 35.524H249.038V62.6238H258.61V27.2996H244.791V35.524ZM253.824 22.7156C257.195 22.7156 259.622 20.3561 259.622 16.9855C259.622 13.6149 257.195 11.188 253.824 11.188C250.454 11.188 248.027 13.6149 248.027 16.9855C248.027 20.3561 250.454 22.7156 253.824 22.7156Z" fill="white"/>
-                <path d="M278.432 54.3995C278.163 54.3995 277.758 54.4669 277.152 54.4669C274.994 54.4669 274.725 53.4557 274.725 51.9726V12.0644H265.152V52.6467C265.152 59.6576 267.849 62.7586 275.466 62.7586C276.747 62.7586 277.96 62.6238 278.432 62.5564V54.3995Z" fill="white"/>
-                <path d="M279.521 35.524H283.768V62.6238H293.341V27.2996H279.521V35.524ZM288.555 22.7156C291.925 22.7156 294.352 20.3561 294.352 16.9855C294.352 13.6149 291.925 11.188 288.555 11.188C285.184 11.188 282.757 13.6149 282.757 16.9855C282.757 20.3561 285.184 22.7156 288.555 22.7156Z" fill="white"/>
-                <path d="M312.557 62.9937C321.86 62.9937 326.242 58.0726 326.242 52.8819C326.242 38.4556 305.007 46.4777 305.007 36.9725C305.007 33.8716 307.636 31.2425 312.962 31.2425C318.422 31.2425 320.984 34.2086 321.388 37.9163H326.175C325.77 33.2648 322.602 27.0629 313.097 27.0629C304.94 27.0629 300.356 31.9166 300.356 37.1748C300.356 51.264 321.591 43.1745 321.591 53.0167C321.591 56.4547 318.355 58.8142 312.557 58.8142C306.625 58.8142 303.659 55.848 303.322 51.4662H298.468C298.873 57.4659 302.648 62.9937 312.557 62.9937Z" fill="white"/>
-                <path d="M364.256 46.4103C364.256 46.4103 364.324 45.3317 364.324 44.5901C364.324 34.8827 358.054 27.0629 347.808 27.0629C337.494 27.0629 330.955 35.4894 330.955 44.9946C330.955 54.6346 337.022 62.9937 347.875 62.9937C356.032 62.9937 361.695 58.0052 363.717 51.4662H358.729C357.245 55.6458 353.201 58.6794 347.943 58.6794C340.729 58.6794 336.213 53.3538 335.741 46.4103H364.256ZM347.808 31.3773C354.549 31.3773 358.931 35.8939 359.538 42.5004H335.876C336.685 36.1636 341.134 31.3773 347.808 31.3773Z" fill="white"/>
-                <path d="M394.037 45.871V49.1068C394.037 54.9717 389.79 59.0164 381.634 59.0164C376.578 59.0164 373.814 56.9266 373.814 52.41C373.814 50.118 374.892 48.3652 376.578 47.4215C378.33 46.4777 380.69 45.871 394.037 45.871ZM381.094 62.9937C387.027 62.9937 391.813 61.1062 394.24 57.1963V62.1848H398.824V39.7364C398.824 32.1188 394.442 27.0629 384.532 27.0629C375.027 27.0629 370.848 31.8492 369.971 37.9837H374.623C375.566 33.13 379.274 31.1751 384.33 31.1751C390.802 31.1751 394.037 33.8716 394.037 39.669V41.8936C383.184 41.8936 378.667 42.0959 375.297 43.4441C371.387 44.9946 369.095 48.4327 369.095 52.5448C369.095 58.5445 372.937 62.9937 381.094 62.9937Z" fill="white"/>
-                <path d="M424.991 27.6022C424.991 27.6022 424.182 27.5348 423.845 27.5348C417.509 27.5348 414.138 30.838 412.857 33.1974V27.8718H408.273V62.1848H413.059V42.7026C413.059 35.5569 417.441 32.0514 423.306 32.0514C424.182 32.0514 424.991 32.1188 424.991 32.1188V27.6022Z" fill="white"/>
-                <path d="M425.809 45.062C425.809 54.4324 432.28 62.9937 442.729 62.9937C452.032 62.9937 457.425 56.7918 458.773 49.9831H453.92C452.504 55.3087 448.594 58.6794 442.729 58.6794C435.516 58.6794 430.662 52.9493 430.662 45.062C430.662 37.1073 435.516 31.3773 442.729 31.3773C448.594 31.3773 452.504 34.7479 453.92 40.0735H458.773C457.425 33.2648 452.032 27.0629 442.729 27.0629C432.28 27.0629 425.809 35.6243 425.809 45.062Z" fill="white"/>
-                <path d="M470.041 11.6254H465.255V62.1848H470.041V41.8936C470.041 34.8827 474.558 31.2425 480.355 31.2425C486.49 31.2425 489.389 35.0176 489.389 41.2195V62.1848H494.175V40.2757C494.175 32.6581 489.658 27.0629 481.164 27.0629C474.76 27.0629 471.255 30.5683 470.041 32.6581V11.6254Z" fill="white"/>
-                <path d="M0.825012 73.993L24.0688 14.5224C27.3443 6.14179 35.4223 0.625977 44.4203 0.625977H58.4336L35.1899 60.0966C31.9143 68.4772 23.8363 73.993 14.8384 73.993H0.825012Z" fill="url(#paint0_linear_0_3)"/>
-                <path d="M34.9246 73.9932L58.1684 14.5226C61.444 6.14197 69.5219 0.626152 78.5199 0.626152H92.5333L69.2895 60.0968C66.014 68.4774 57.936 73.9932 48.938 73.9932H34.9246Z" fill="url(#paint1_linear_0_3)"/>
-                <path d="M69.0262 73.9932L92.27 14.5226C95.5456 6.14197 103.624 0.626152 112.622 0.626152H126.635L103.391 60.0968C100.116 68.4774 92.0376 73.9932 83.0396 73.9932H69.0262Z" fill="url(#paint2_linear_0_3)"/>
-                <defs>
-                <linearGradient id="paint0_linear_0_3" x1="126.635" y1="-4.97799" x2="0.825008" y2="66.0978" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#FF5CAA"/>
-                <stop offset="1" stop-color="#FF4E62"/>
-                </linearGradient>
-                <linearGradient id="paint1_linear_0_3" x1="126.635" y1="-4.97799" x2="0.825008" y2="66.0978" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#FF5CAA"/>
-                <stop offset="1" stop-color="#FF4E62"/>
-                </linearGradient>
-                <linearGradient id="paint2_linear_0_3" x1="126.635" y1="-4.97799" x2="0.825008" y2="66.0978" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#FF5CAA"/>
-                <stop offset="1" stop-color="#FF4E62"/>
-                </linearGradient>
-                </defs>
-                </svg>
-            </div>
-            <div style="margin-bottom: 32px">
-                <div style="display: inline-flex; align-items: center;justify-content: center">
-                    <span style="font-size: 24px">Status</span>
-                    <button is="emby-button" type="button" id="meilisearch-refresh-status-button"
-                            class="raised button-submit block formDialogFooterItem emby-button"
-                            style="margin: 0; padding: 4px 4px">
-                        <span>refresh</span>
-                    </button>
-                    <button is="emby-button" type="button" id="meilisearch-reindex-button"
-                            class="raised button-submit block formDialogFooterItem emby-button"
-                            style="margin: 0; padding: 4px 4px;"
-                    >
-                        <span>reindex</span>
-                    </button>
-                    <button is="emby-button" type="button" id="meilisearch-reconnect-button"
-                            class="raised button-submit block formDialogFooterItem emby-button"
-                            style="margin: 0; padding: 4px 4px; display: none"
-                    >
-                        <span>reconnect</span>
-                    </button>
-                </div>
-                <pre id="status"
-                     style="background: #fff1; margin-top: 0; padding: 16px; font-family: 'JetBrains Mono','JetBrainsMono NF',Consolas,monospace">(this is a placeholder)</pre>
+
+            <div class="b-head">
+                <h1>Bloom</h1>
+                <a href="#/configurationpage?name=BloomDiagnostics">Search diagnostics &rarr;</a>
             </div>
 
-            <span style="font-size: 24px">Config</span>
-            <form id="MeilisearchConfigForm">
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="Url">Meilisearch URL</label>
-                    <input id="Url" is="emby-input" min="0" name="Url" type="text"/>
+            <div class="b-verdict">
+                <span class="b-vdot" id="vDot"></span>
+                <div class="b-vmain">
+                    <div class="b-vtitle" id="vTitle">Checking&hellip;</div>
+                    <div class="b-vwhy" id="vWhy"></div>
+                    <div class="b-vnext" id="vNext"></div>
                 </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="ApiKey">Meilisearch Api Key</label>
-                    <input id="ApiKey" is="emby-input" name="ApiKey" type="text"/>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="IndexName">Meilisearch Index Name</label>
-                    <input id="IndexName" is="emby-input" name="IndexName" type="text"/>
-                    <div class="fieldDescription">Default to server friendly name.</div>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="MatchingStrategy">Matching Strategy</label>
-                    <select id="MatchingStrategy" is="emby-select" name="MatchingStrategy">
-                        <option value="last">last (default — return results with most keywords matched)</option>
-                        <option value="all">all — only return results matching every keyword</option>
-                        <option value="frequency">frequency — prioritise words appearing less frequently</option>
-                    </select>
-                    <div class="fieldDescription">Controls how Meilisearch matches search keywords.</div>
-                </div>
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label class="emby-checkbox-label">
-                        <input id="Debug" is="emby-checkbox" name="Debug" type="checkbox"/>
-                        <span>Debug Output</span>
-                    </label>
-                    <div class="fieldDescription checkboxFieldDescription">
-                        This option can't change log level, it only enables some certain log outputs.
+                <button is="emby-button" type="button" id="vRefresh" class="raised b-refresh"><span>Refresh</span></button>
+            </div>
+            <div class="b-facts" id="vFacts"></div>
+
+            <form id="BloomConfigForm">
+                <div class="b-sec">
+                    <h2>Search server</h2>
+                    <p class="b-hint">Bloom's brain: it understands the query, ranks and reranks. Without it
+                        the plugin does plain keyword search, exactly like stock Jellyfin.</p>
+                    <div class="b-row">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="GatewayUrl">Server address</label>
+                            <input id="GatewayUrl" is="emby-input" type="text" placeholder="http://192.168.1.50:8100"/>
+                            <div class="fieldDescription">As Jellyfin sees it &mdash; not <code>localhost</code> unless Bloom runs on this machine.</div>
+                        </div>
+                        <button is="emby-button" type="button" id="testServer" class="raised b-btn"><span>Test</span></button>
                     </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GatewayAdminToken">Admin token</label>
+                        <input id="GatewayAdminToken" is="emby-input" type="password"/>
+                        <div class="fieldDescription">The <code>ADMIN_TOKEN</code> from the server's <code>.env</code>. Lets this page build the corpus below.</div>
+                    </div>
+                    <div class="b-note" id="serverNote"></div>
                 </div>
-                <div>
-                    <button class="raised button-submit block emby-button" is="emby-button" type="submit">
-                        <span>Save</span>
-                    </button>
+
+                <div class="b-sec">
+                    <h2>Search corpus</h2>
+                    <p class="b-hint">The highlighted step is the one to run next. Nothing already done is
+                        repeated, and no title is ever sent to an LLM twice.<br>
+                        Steps 1 and 2 also run nightly on their own &mdash; <b>Scheduled Tasks &rarr; Refresh
+                        Bloom corpus</b> &mdash; so new media becomes searchable without you doing anything.</p>
+                    <div class="b-steps" id="corpusSteps"></div>
+                    <div class="b-note" id="corpusNote"></div>
+                    <pre class="b-log" id="corpusLog"></pre>
                 </div>
+
+                <details class="b-adv">
+                    <summary>Advanced &mdash; Meilisearch connection and keyword tuning</summary>
+                    <div>
+                        <p class="b-hint">Meilisearch holds your library for keyword search. The plugin writes to it
+                            and the server reads from it, so both must point at the same place &mdash; take these from
+                            the server rather than typing them twice.</p>
+                        <div class="b-row">
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="Url">Meilisearch address</label>
+                                <input id="Url" is="emby-input" type="text" placeholder="http://192.168.1.50:7700"/>
+                            </div>
+                            <button is="emby-button" type="button" id="pullMeili" class="raised b-btn"><span>Take from server</span></button>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="ApiKey">API key</label>
+                            <input id="ApiKey" is="emby-input" name="ApiKey" type="password"/>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="IndexName">Index name</label>
+                            <input id="IndexName" is="emby-input" name="IndexName" type="text" placeholder="bloom"/>
+                            <div class="fieldDescription">Must match the server's. Left blank, the plugin invents one from
+                                this server's name &mdash; which the search server will not be reading.</div>
+                        </div>
+                        <div class="b-note" id="meiliNote"></div>
+
+                        <div class="selectContainer" style="margin-top:18px">
+                            <label class="selectLabel" for="MatchingStrategy">When not every word matches</label>
+                            <select id="MatchingStrategy" is="emby-select" name="MatchingStrategy">
+                                <option value="last">Drop words from the end until something matches (default)</option>
+                                <option value="all">Require every word &mdash; precise, often empty</option>
+                                <option value="frequency">Drop the commonest words first</option>
+                            </select>
+                            <div class="fieldDescription">Keyword search only. No effect on results from the search server.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-top:16px">
+                            <label class="emby-checkbox-label">
+                                <input id="Debug" is="emby-checkbox" type="checkbox"/>
+                                <span>Verbose logging</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Extra detail in the Jellyfin log. Does not change the log level.</div>
+                        </div>
+                    </div>
+                </details>
+
+                <button is="emby-button" type="submit" class="raised button-submit block" style="margin-top:22px">
+                    <span>Save</span></button>
             </form>
         </div>
     </div>
+
     <script type="text/javascript">
-        (() => {
-            const id = '974395db-b31d-46a2-bc86-ef9aa5ac04dd';
-            const statusEl = document.querySelector('#status')
-            const btn = document.querySelector('#meilisearch-refresh-status-button')
-            const reconnectBtn = document.querySelector('#meilisearch-reconnect-button')
-            const reindexBtn = document.querySelector('#meilisearch-reindex-button')
-            const clsNameEnabled = 'raised button-submit block formDialogFooterItem emby-button';
-            const clsNameDisabled = 'block formDialogFooterItem emby-button';
-            const updateStatus = (endpoint) => {
-                btn.setAttribute('disabled', 'disabled');
-                reconnectBtn.setAttribute('disabled', 'disabled');
-                reindexBtn.setAttribute('disabled', 'disabled');
-                btn.className = clsNameDisabled;
-                reconnectBtn.className = clsNameDisabled;
-                reindexBtn.className = clsNameDisabled;
-
-                statusEl.innerText = 'loading status...';
-                ApiClient.get('/meilisearch/' + endpoint).then(r => r.json()).then(status => {
-                    statusEl.innerText = JSON.stringify(status, null, 2);
-                    if (status.meilisearchOk) {
-                        reconnectBtn.style.display = 'none';
-                    } else {
-                        reconnectBtn.style.display = 'block';
-                    }
-                }).catch(e => {
-                    statusEl.innerText = 'error fetching status: ' + e.message;
-                    console.log(e)
-                }).finally(() => {
-                    btn.removeAttribute('disabled');
-                    reconnectBtn.removeAttribute('disabled');
-                    reindexBtn.removeAttribute('disabled');
-                    btn.className = clsNameEnabled;
-                    reconnectBtn.className = clsNameEnabled;
-                    reindexBtn.className = clsNameEnabled;
-                })
+        (function () {
+            var pluginId = '3112ddc0-3e7d-499d-b1b6-5b9e89a6a476';
+            var $ = function (s) { return document.querySelector(s); };
+            function esc(s) {
+                return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+                });
             }
-            btn.addEventListener('click', () => updateStatus('status'));
-            reconnectBtn.addEventListener('click', () => updateStatus('reconnect'));
-            reindexBtn.addEventListener('click', () => updateStatus('reindex'));
 
+            // Steps named by outcome and cost, not by script. A button labelled
+            // "distil" tells an admin nothing about what is about to happen.
+            // Ordered, with a dependency the old flat list hid entirely: enrichment
+            // writes descriptions, and search only changes once they are embedded.
+            var STEPS = [
+                { id: 'pull', title: 'Read your library',
+                  desc: 'Fetches titles and metadata from Jellyfin. Read-only.', cost: 'seconds' },
+                { id: 'embed', title: 'Build the search corpus',
+                  desc: 'Turns your library into vectors so meaning-based search works.',
+                  cost: '~10 min / 5k titles' },
+                { id: 'distil-submit', title: 'Improve it with an LLM',
+                  desc: 'Optional. Sends every title that has no description yet, and re-embeds them '
+                      + 'when the results come back. Needs an LLM key.', cost: '~$2 / 1k titles' },
+                { id: 'distil-poll', title: 'Collect LLM results',
+                  desc: 'Applies the finished batch and rebuilds the corpus for those titles.',
+                  cost: 'minutes' }
+            ];
 
-            document.querySelector('#MeilisearchConfigPage')
-                .addEventListener('pageshow', function () {
-                    Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(id).then(config => {
-                        document.querySelector('#Url').value = config.Url;
-                        document.querySelector('#ApiKey').value = config.ApiKey;
-                        document.querySelector('#Debug').checked = config.Debug;
-                        document.querySelector('#IndexName').value = config.IndexName;
-                        document.querySelector('#MatchingStrategy').value = config.MatchingStrategy || 'last';
-                        Dashboard.hideLoadingMsg();
-                    });
-                    updateStatus('status');
+            // ~$2 per 1,000 titles, measured. Shown so nobody has to guess what a
+            // run will charge them.
+            function cost(n) {
+                if (!n) { return ''; }
+                var d = n * 0.002;
+                return ' (' + n.toLocaleString() + ' waiting, about ' + (d < 0.01 ? '<$0.01' : '$' + d.toFixed(2)) + ')';
+            }
+
+            function verdict(state, title, why, next, cls) {
+                $('#vDot').style.background = { ok: '#3fb950', warn: '#e3b341', bad: '#f85149', na: '#8b949e' }[state];
+                $('#vTitle').textContent = title;
+                $('#vWhy').textContent = why || '';
+                $('#vNext').textContent = next || '';
+                $('#vNext').className = 'b-vnext ' + (cls || '');
+            }
+
+            // One verdict, derived in the order an admin would debug it. The first
+            // failure is the only thing reported -- five amber rows is not a
+            // hierarchy, it is a list.
+            var refreshing = false;
+            function refresh() {
+                // Overlapping refreshes fight over the same text and make the page
+                // flicker; the last answer is the only one that matters anyway.
+                if (refreshing) { return; }
+                refreshing = true;
+                $('.b-verdict').classList.add('busy');
+                ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/readiness')).then(function (r) {
+                    var st = r.stats || {}, h = r.health || {};
+                    var docs = r.meiliDocs, corpus = st.vectorized || 0;
+                    $('#vFacts').innerHTML = [
+                        [docs == null ? '—' : docs.toLocaleString(), 'items indexed'],
+                        [corpus ? corpus.toLocaleString() : '—', 'titles in corpus'],
+                        [r.pluginIndex || '—', 'index']
+                    ].map(function (f) {
+                        return '<div class="b-fact"><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + '</span></div>';
+                    }).join('');
+
+                    if (!r.serverConfigured) {
+                        return verdict('warn', 'Keyword search only',
+                            'No search server set, so Bloom behaves like stock Jellyfin search.',
+                            'Add the server address below, then Save.', 'act');
+                    }
+                    if (!r.serverReachable) {
+                        return verdict('bad', 'Cannot reach the server',
+                            'Searches fall back to keyword, so nothing is broken for your users.',
+                            'Check the address is reachable from Jellyfin, not from your browser.', 'bad');
+                    }
+                    if (r.pluginIndex && h.index && r.pluginIndex !== h.index) {
+                        return verdict('bad', 'Plugin and server disagree',
+                            'The plugin writes to “' + r.pluginIndex + '”, the server reads “' + h.index + '”.',
+                            'Open Advanced and press Take from server.', 'bad');
+                    }
+                    if (r.meiliReachable === false) {
+                        return verdict('bad', 'Cannot reach Meilisearch',
+                            'Jellyfin cannot reach Meilisearch at ' + (r.meiliUrl || 'the configured address')
+                            + ', so nothing can be indexed and Rebuild search index will fail.',
+                            'Fix the Meilisearch address below. It has to be reachable from Jellyfin, '
+                            + 'not from your browser.', 'bad');
+                    }
+                    if (!docs) {
+                        return verdict('warn', 'Library not indexed yet',
+                            'Meilisearch is connected but empty, so searches have nothing to match against.',
+                            'Dashboard → Scheduled Tasks → Rebuild search index.', 'act');
+                    }
+                    if (!corpus) {
+                        return verdict('warn', 'No search corpus yet',
+                            'Keyword search works. Meaning-based search needs the corpus built.',
+                            'Run Build the search corpus below.', 'act');
+                    }
+                    lastStats = {
+                        titles: (st.titles && Object.keys(st.titles).length)
+                            ? Object.values(st.titles).reduce(function (a, b) { return a + b; }, 0) : 0,
+                        vectorized: corpus, enriched: st.enriched || 0,
+                        tier1: st.vectorized_meta_only || 0,
+                        pending: st.pending_enrichment || 0
+                    };
+                    if (!st.enriched) {
+                        return verdict('ok', 'Bloom is answering searches',
+                            corpus.toLocaleString() + ' titles, from library metadata alone.',
+                            'Optional: Improve it with an LLM, worth about +17 points of hit rate'
+                            + cost(st.pending_enrichment) + '.', 'act');
+                    }
+                    // Descriptions live in the database; search only changes once they
+                    // are vectors. Reporting "enriched" while every vector is still
+                    // tier-1 is the difference between having paid for something and
+                    // having it, so it gets its own verdict rather than a green tick.
+                    var tier1 = st.vectorized_meta_only || 0;
+                    if (st.enriched && tier1 >= corpus) {
+                        return verdict('warn', 'Descriptions not searchable yet',
+                            st.enriched.toLocaleString() + ' titles have been described, but the corpus is '
+                            + 'still built from metadata alone — searches have not changed.',
+                            'Run Build the search corpus below to finish.', 'act');
+                    }
+                    var pending = st.pending_enrichment || 0;
+                    verdict('ok', 'Bloom is answering searches',
+                        corpus.toLocaleString() + ' titles, ' + (st.enriched || 0).toLocaleString() + ' LLM-enriched.',
+                        pending ? pending.toLocaleString() + ' new title' + (pending === 1 ? '' : 's')
+                            + ' not enriched yet' + cost(pending) + '. Only these would be sent.' : '',
+                        pending ? 'act' : '');
+                }).catch(function () {
+                    verdict('bad', 'Could not read status', 'The plugin could not reach its own API.', '', 'bad');
+                }).then(function () {
+                    refreshing = false;
+                    $('.b-verdict').classList.remove('busy');
+                    loadSteps();
                 });
+            }
 
-            document.querySelector('#MeilisearchConfigForm')
-                .addEventListener('submit', function (e) {
-                    Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(id).then(config => {
-                        config.Url = document.querySelector('#Url').value;
-                        config.ApiKey = document.querySelector('#ApiKey').value;
-                        config.Debug = document.querySelector('#Debug').checked;
-                        config.IndexName = document.querySelector('#IndexName').value;
-                        config.MatchingStrategy = document.querySelector('#MatchingStrategy').value;
-                        ApiClient.updatePluginConfiguration(id, config).then(result => {
-                            Dashboard.processPluginConfigurationUpdateResult(result);
-                        });
+            var lastStats = {};
+
+            // State per step, so the page answers "what do I press now" rather than
+            // offering four identical buttons and leaving the order to the reader.
+            // Exactly one step is ever highlighted, and it is never a paid one: a
+            // spend has to read as a choice, not as the next thing you owe the
+            // wizard. Paid and also-available steps get 'opt'.
+            function stepState(id, s) {
+                var titles = lastStats.titles || 0, vec = lastStats.vectorized || 0;
+                var enriched = lastStats.enriched || 0, pending = lastStats.pending || 0;
+                var tier1 = lastStats.tier1 || 0, batch = !!(s.batch_pending);
+
+                // Every tier-3 vector belongs to a described title, so anything
+                // described beyond that count is paid for and not yet searchable.
+                var unsearchable = Math.max(0, enriched - (vec - tier1));
+                var unembedded = Math.max(0, titles - vec);
+                var next = !titles ? 'pull'
+                         : (!vec || unsearchable || unembedded) ? 'embed'
+                         : batch ? 'distil-poll' : null;
+                var live = function (id, label) { return [next === id ? 'now' : 'opt', label]; };
+
+                if (id === 'pull') {
+                    return titles ? ['done', titles.toLocaleString() + ' titles read'] : ['now', 'Start here'];
+                }
+                if (id === 'embed') {
+                    if (!titles) { return ['wait', 'Read your library first']; }
+                    if (!vec) { return live('embed', 'Nothing embedded yet'); }
+                    if (unsearchable) {
+                        return live('embed', unsearchable.toLocaleString() + ' descriptions not searchable yet');
+                    }
+                    if (unembedded) {
+                        return live('embed', unembedded.toLocaleString() + ' new titles not searchable yet');
+                    }
+                    return ['done', vec.toLocaleString() + ' titles searchable'];
+                }
+                if (id === 'distil-submit') {
+                    if (!vec) { return ['wait', 'Build the corpus first']; }
+                    if (batch) { return ['wait', 'A batch is already running']; }
+                    if (!pending) { return ['done', enriched.toLocaleString() + ' titles described']; }
+                    var d = pending * 0.002;
+                    return ['opt', 'Optional: describe ' + pending.toLocaleString() + ' titles for about '
+                                   + (d < 0.01 ? '<$0.01' : '$' + d.toFixed(2))];
+                }
+                if (id === 'distil-poll') {
+                    if (!batch) { return ['wait', 'Only needed after sending to an LLM']; }
+                    return live('distil-poll', 'Check whether your batch is ready');
+                }
+                return ['wait', ''];
+            }
+
+            function loadSteps() {
+                var box = $('#corpusSteps');
+                ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/enrich/status')).then(function (s) {
+                    var job = s.job, running = job && job.running, have = {};
+                    (s.tasks || []).forEach(function (t) { have[t.id] = true; });
+                    box.innerHTML = STEPS.filter(function (m) { return have[m.id]; }).map(function (m, i) {
+                        var st = stepState(m.id, s), state = st[0];
+                        return '<div class="b-step ' + state + '">'
+                            + '<span class="b-num">' + (state === 'done' ? '&#10003;' : (i + 1)) + '</span>'
+                            + '<div class="b-stxt">'
+                            + '<div class="b-title">' + esc(m.title) + '</div>'
+                            + '<div class="b-desc">' + esc(m.desc) + '</div>'
+                            + '<div class="b-state">' + esc(st[1]) + '</div>'
+                            + '</div>'
+                            + '<button is="emby-button" type="button" class="' + (state === 'now' ? 'raised' : '')
+                            + ' b-run" data-task="' + m.id + '"' + (running || state === 'wait' ? ' disabled' : '')
+                            + '><span>' + (state === 'done' ? 'Run again' : 'Run') + '</span></button>'
+                            + '<span class="b-cost" style="align-self:center">' + esc(m.cost) + '</span>'
+                            + '</div>';
+                    }).join('');
+                    Array.prototype.forEach.call(document.querySelectorAll('.b-run'), function (b) {
+                        b.addEventListener('click', function () { run(b.getAttribute('data-task')); });
                     });
-
-                    e.preventDefault();
-                    return false;
+                    $('#corpusNote').className = 'b-note' + (job && !running && job.rc !== 0 ? ' warn' : '');
+                    $('#corpusNote').textContent = running ? 'Running ' + job.task + '…'
+                        : (job ? 'Last run: ' + job.task + (job.rc === 0 ? ' finished' : ' failed (exit ' + job.rc + ')') : '');
+                    if (running) { pollLog(); }
+                }).catch(function () {
+                    box.innerHTML = '';
+                    $('#corpusNote').className = 'b-note warn';
+                    $('#corpusNote').textContent = 'Set the server address and admin token above and Save to build the corpus from here.';
                 });
+            }
+
+            function run(task) {
+                $('#corpusLog').style.display = '';
+                $('#corpusLog').textContent = 'starting ' + task + '…';
+                // The submit script caps at 25 by default -- a sane guard for a
+                // shell, but through a button that has just shown the count and
+                // the price it reads as the feature being broken. Ask for the
+                // whole backlog; the cost was on screen before the click.
+                var body = task === 'distil-submit' ? { task: task, args: { all: true } } : { task: task };
+                chainEmbedAfter = task === 'distil-poll' ? 'distil-poll' : null;
+                ApiClient.ajax({
+                    type: 'POST', url: ApiClient.getUrl('meilisearch/semantic/enrich/run'),
+                    contentType: 'application/json', data: JSON.stringify(body)
+                }).then(function () { loadSteps(); pollLog(); });
+            }
+
+            var chainEmbedAfter = null;
+
+            function pollLog() {
+                ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/enrich/log')).then(function (l) {
+                    $('#corpusLog').style.display = '';
+                    $('#corpusLog').textContent = (l.text || '').slice(-4000);
+                    $('#corpusLog').scrollTop = $('#corpusLog').scrollHeight;
+                    if (l.running) { return setTimeout(pollLog, 2000); }
+                    // Applying a batch only writes descriptions; nothing about search
+                    // changes until they are vectors. Nobody should have to know that,
+                    // so collecting results runs the re-embed itself. It is cheap:
+                    // only the newly-described titles are stale.
+                    if (chainEmbedAfter === 'distil-poll') {
+                        chainEmbedAfter = null;
+                        $('#corpusNote').textContent = 'Descriptions applied — rebuilding the corpus for them…';
+                        return run('embed');
+                    }
+                    loadSteps(); refresh();
+                }).catch(function () { });
+            }
+
+            $('#vRefresh').addEventListener('click', refresh);
+            $('#testServer').addEventListener('click', function () {
+                var note = $('#serverNote');
+                note.className = 'b-note'; note.textContent = 'testing…';
+                var u = $('#GatewayUrl').value.trim();
+                ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/test?target=gateway'
+                    + (u ? '&url=' + encodeURIComponent(u) : ''))).then(function (r) {
+                    note.className = 'b-note' + (r.ok ? '' : ' warn');
+                    note.textContent = (r.ok ? 'Reachable — ' : 'Not reachable — ') + (r.detail || '');
+                }).catch(function (e) {
+                    note.className = 'b-note warn'; note.textContent = 'Test failed: ' + e.message;
+                });
+            });
+
+            // The plugin writes to Meilisearch and the server reads from it, so the
+            // two have to agree. Take them from the server: it is the one that knows.
+            $('#pullMeili').addEventListener('click', function () {
+                ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/server-meili')).then(function (m) {
+                    $('#Url').value = m.url || '';
+                    $('#ApiKey').value = m.key || '';
+                    $('#IndexName').value = m.index || '';
+                    var note = 'Filled from the server: ' + esc(m.url) + ', index ' + esc(m.index) + '. Save to apply.';
+                    if (m.derived) {
+                        note += ' The address was guessed from the server host; set MEILI_PUBLIC_URL in the server’s .env if that is wrong.';
+                    }
+                    $('#meiliNote').className = 'b-note';
+                    $('#meiliNote').innerHTML = note;
+                }).catch(function () {
+                    $('#meiliNote').className = 'b-note warn';
+                    $('#meiliNote').textContent = 'Could not read the server’s settings. Check the address and admin token above, then Save.';
+                });
+            });
+
+            function load() {
+                ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                    $('#GatewayUrl').value = c.GatewayUrl || '';
+                    $('#GatewayAdminToken').value = c.GatewayAdminToken || '';
+                    $('#Url').value = c.Url || '';
+                    $('#ApiKey').value = c.ApiKey || '';
+                    $('#IndexName').value = c.IndexName || '';
+                    $('#MatchingStrategy').value = c.MatchingStrategy || 'last';
+                    $('#Debug').checked = !!c.Debug;
+                    refresh();
+                    // Environment variables beat these fields, so say so -- otherwise
+                    // the box looks editable and silently does nothing.
+                    ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/status')).then(function (s) {
+                        if (!s.meiliUrlFromEnv && !s.meiliKeyFromEnv) { return; }
+                        var bits = [];
+                        if (s.meiliUrlFromEnv) { bits.push('MEILI_URL = ' + esc(s.meiliUrlFromEnv)); }
+                        if (s.meiliKeyFromEnv) { bits.push('MEILI_MASTER_KEY'); }
+                        $('#meiliNote').className = 'b-note warn';
+                        $('#meiliNote').innerHTML = 'Set in Jellyfin’s environment: ' + bits.join(' and ')
+                            + '. The environment wins, so the field' + (bits.length > 1 ? 's here are' : ' here is')
+                            + ' ignored. Unset it in your Jellyfin container to use this page.';
+                    }).catch(function () { });
+                });
+            }
+
+            var loaded = false;
+            $('#BloomConfigPage').addEventListener('pageshow', function () {
+                if (loaded) { return refresh(); }
+                loaded = true;
+                load();
+            });
+            $('#BloomConfigForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                    c.GatewayUrl = $('#GatewayUrl').value.trim();
+                    c.GatewayAdminToken = $('#GatewayAdminToken').value.trim();
+                    c.Url = $('#Url').value.trim();
+                    c.ApiKey = $('#ApiKey').value.trim();
+                    c.IndexName = $('#IndexName').value.trim();
+                    c.MatchingStrategy = $('#MatchingStrategy').value;
+                    c.Debug = $('#Debug').checked;
+                    ApiClient.updatePluginConfiguration(pluginId, c).then(function (r) {
+                        Dashboard.processPluginConfigurationUpdateResult(r);
+                        refresh();
+                    });
+                });
+                return false;
+            });
         })();
     </script>
 </div>

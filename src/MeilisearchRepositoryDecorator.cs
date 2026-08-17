@@ -13,6 +13,7 @@ namespace Jellyfin.Plugin.Meilisearch;
 public class MeilisearchRepositoryDecorator(
     IItemRepository inner,
     MeilisearchClientHolder clientHolder,
+    Adapters.JellyfinSearchAdapter searchAdapter,
     ILogger<MeilisearchRepositoryDecorator> logger
 ) : IItemRepository
 {
@@ -59,29 +60,11 @@ public class MeilisearchRepositoryDecorator(
             var matchingStrategy = Plugin.Instance?.Configuration.MatchingStrategy ?? "last";
             var limit = Math.Max(filter.Limit is > 0 ? filter.Limit.Value : 30, 1);
             var typeFilter = string.Join(" OR ", types.Select(t => $"type = \"{t}\""));
-            var result = await index.SearchAsync<MeilisearchItem>(
-                searchTerm,
-                new SearchQuery
-                {
-                    Filter = typeFilter,
-                    Offset = filter.StartIndex ?? 0,
-                    Limit = limit,
-                    MatchingStrategy = matchingStrategy,
-                }
-            ).ConfigureAwait(false);
-
-            List<Guid> ids = [];
-            foreach (var hit in result.Hits)
-            {
-                if (Guid.TryParse(hit.Guid, out var id))
-                    ids.Add(id);
-                else
-                    logger.LogWarning("Skipping Meilisearch hit with invalid GUID '{Guid}'", hit.Guid);
-            }
-
-            var totalCount = result is SearchResult<MeilisearchItem> searchResult
-                ? searchResult.EstimatedTotalHits
-                : ids.Count;
+            // Hand off to the search server if one is configured; otherwise this
+            // is a plain keyword query, byte-identical to stock.
+            var (ids, totalCount) = await searchAdapter.SearchAsync(
+                index, searchTerm, typeFilter, filter.StartIndex ?? 0, limit, matchingStrategy,
+                CancellationToken.None).ConfigureAwait(false);
             return new SearchResultData(ids, totalCount);
         }
         catch (MeilisearchCommunicationError e)
@@ -278,7 +261,20 @@ public class MeilisearchRepositoryDecorator(
     }
 
     public Task ReattachUserDataAsync(BaseItem item, CancellationToken cancellationToken) => inner.ReattachUserDataAsync(item, cancellationToken);
-    public void DeleteItem(IReadOnlyList<Guid> ids) => inner.DeleteItem(ids);
+    public void DeleteItem(IReadOnlyList<Guid> ids)
+    {
+        inner.DeleteItem(ids);
+
+        // Meilisearch has no idea the item is gone: indexing is add-or-update, so
+        // without this the document outlives the media and keeps turning up in
+        // search results that lead nowhere. Fire and forget -- Jellyfin calls this
+        // synchronously, and a failed removal is corrected by the next full index.
+        var task = clientHolder.Call((_, index) =>
+            index.DeleteDocumentsAsync(ids.Select(id => id.ToString()).ToList()));
+        task?.ContinueWith(
+            t => logger.LogWarning(t.Exception, "Could not remove {Count} deleted items from Meilisearch", ids.Count),
+            TaskContinuationOptions.OnlyOnFaulted);
+    }
     public void SaveItems(IReadOnlyList<BaseItem> items, CancellationToken ct) => inner.SaveItems(items, ct);
     public void SaveImages(BaseItem item) => inner.SaveImages(item);
     public BaseItem? RetrieveItem(Guid id) => inner.RetrieveItem(id);
