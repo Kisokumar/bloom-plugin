@@ -13,6 +13,10 @@ public class PluginRegister : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton<UpdateMeilisearchIndexTask>();
         serviceCollection.AddSingleton<MeilisearchClientHolder>();
+        serviceCollection.AddSingleton<Adapters.SearchAnalytics>();
+        serviceCollection.AddSingleton<Adapters.RefreshCorpusTask>();
+        serviceCollection.AddSingleton<Adapters.GatewayClientProvider>();
+        serviceCollection.AddSingleton<Adapters.JellyfinSearchAdapter>();
         serviceCollection.AddSingleton<Indexer, EfCoreIndexer>();
 
         var descriptor = serviceCollection.FirstOrDefault(d => d.ServiceType == typeof(IItemRepository));
@@ -31,6 +35,7 @@ public class PluginRegister : IPluginServiceRegistrator
                 return new MeilisearchRepositoryDecorator(
                     original,
                     sp.GetRequiredService<MeilisearchClientHolder>(),
+                    sp.GetRequiredService<Adapters.JellyfinSearchAdapter>(),
                     sp.GetRequiredService<ILogger<MeilisearchRepositoryDecorator>>()
                 );
             });
