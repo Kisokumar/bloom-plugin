@@ -16,8 +16,8 @@ public class ScheduledTask(ILogger<ScheduledTask> logger, Indexer indexer) : ISc
         return [];
     }
 
-    public string Name => "Update Meilisearch index for all documents";
+    public string Name => "Rebuild search index";
     public string Key => "task-meilisearch-reindex-full";
-    public string Description => "Update index for all documents";
-    public string Category => "Meilisearch";
+    public string Description => "Rebuild the search index for all library items";
+    public string Category => "Bloom";
 }
