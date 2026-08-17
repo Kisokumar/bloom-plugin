@@ -19,5 +19,12 @@ public record MeilisearchItem(
     double? CriticRating,
     string? Path,
     string? Tagline,
-    string? SortName
+    string? SortName,
+    string[]? People = null,
+    string? OfficialRating = null,
+    int? RuntimeMinutes = null,
+    string? Decade = null,
+    // indexed as a filter only — nothing queries it yet, but backfilling it
+    // later would mean a full re-index of every library
+    string[]? ProductionLocations = null
 );

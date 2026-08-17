@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Bloom</title>
+<style>
+    #BloomPage .content-primary { max-width:1040px; }
+    #BloomPage .dim { opacity:.6; }
+    #BloomPage h1 { margin:0 0 4px; }
+    #BloomPage .lead { opacity:.6; margin:0 0 20px; font-size:14px; line-height:1.5; }
+
+    #BloomPage #statusCards { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px; }
+    #BloomPage .bcard { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:8px; padding:10px 14px; min-width:120px; }
+    #BloomPage .bct { opacity:.55; font-size:11px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+    #BloomPage .bcb { font-size:15px; }
+
+    #BloomPage .qbar { display:flex; gap:8px; margin:0 0 22px; }
+    #BloomPage .qbar input { flex:1; }
+
+    #BloomPage #split { display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; }
+    #BloomPage #thinkPane { flex:1 1 42%; min-width:300px; }
+    #BloomPage main { flex:1 1 42%; min-width:300px; }
+    #BloomPage h3 { margin:0 0 14px; font-size:15px; font-weight:600; }
+
+    #BloomPage .tstage { margin-bottom:20px; }
+    #BloomPage .tstage h4 { margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; opacity:.5; }
+    #BloomPage .tsteps { list-style:none; margin:0; padding:0; }
+    #BloomPage .tstep { display:flex; align-items:baseline; gap:12px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+    #BloomPage .tstep:last-child { border-bottom:none; }
+    #BloomPage .tlabel { font-size:14px; line-height:1.4; }
+    #BloomPage .twhy { display:block; font-size:12px; opacity:.5; margin-top:3px; line-height:1.45; }
+    #BloomPage .tcount { margin-left:auto; flex:none; font-variant-numeric:tabular-nums; font-size:12px; opacity:.8; background:rgba(255,255,255,.09); border-radius:10px; padding:2px 9px; }
+    #BloomPage .toff { font-size:12.5px; opacity:.45; padding:8px 0 0; line-height:1.45; }
+
+    #BloomPage #results { list-style:none; padding:0; margin:0; }
+    #BloomPage #results li { padding:13px 0; border-bottom:1px solid rgba(255,255,255,.08); }
+    #BloomPage .rh { display:flex; align-items:baseline; gap:8px; }
+    #BloomPage .rn { font-weight:600; font-size:14.5px; }
+    #BloomPage .ryr { opacity:.55; font-size:13px; }
+    #BloomPage .ch { background:rgba(232,106,176,.2); color:#f090c4; border-radius:9px; padding:1px 8px; font-size:11px; white-space:nowrap; }
+    #BloomPage .rsc { margin-left:auto; flex:none; font-variant-numeric:tabular-nums; opacity:.6; font-size:13px; }
+    #BloomPage .rlegs { font-size:12px; opacity:.5; margin-top:5px; }
+    #BloomPage .mp { font-size:12.5px; opacity:.62; margin-top:5px; font-style:italic; }
+
+    #BloomPage .raw { margin-top:18px; }
+    #BloomPage .raw pre { background:rgba(255,255,255,.05); border-radius:6px; padding:12px; font-size:12px; overflow:auto; }
+    #BloomPage #analytics { display:flex; gap:22px; flex-wrap:wrap; font-size:13px; align-items:flex-start; }
+    #BloomPage #analytics ol { margin:5px 0 0; padding-left:18px; }
+    #BloomPage #analytics li { padding:2px 0; }
+</style>
+</head>
+<body>
+<div class="page type-interior pluginConfigurationPage" data-role="page" id="BloomPage"
+     data-require="emby-input,emby-button">
+    <div data-role="content"><div class="content-primary">
+        <h1>Bloom</h1>
+        <p class="lead">Test a search the way a client would, and see how Bloom answered it.
+            Settings live on the <a href="#/configurationpage?name=Bloom">Bloom settings page</a>.</p>
+
+        <div id="statusCards"></div>
+
+        <div class="qbar">
+            <input id="q" is="emby-input" type="text"
+                   placeholder="80s horror but funny · movies like heat · rated pg under 90 minutes"/>
+            <button is="emby-button" id="run" class="raised button-submit"><span>Search</span></button>
+        </div>
+
+        <div id="split" style="display:none">
+            <aside id="thinkPane">
+                <h3>How Bloom answered this <span id="thinkMeta" class="dim"></span></h3>
+                <div id="think"></div>
+                <details class="raw"><summary>raw intent + trace</summary><pre id="rawpre"></pre></details>
+            </aside>
+            <main>
+                <h3>Results <span id="resMeta" class="dim"></span></h3>
+                <ol id="results"></ol>
+            </main>
+        </div>
+
+        <h2>Analytics <span class="dim" style="font-size:12px">(since last restart)</span></h2>
+        <div id="analytics"></div>
+    </div></div>
+
+    <script type="text/javascript">
+    (function () {
+        var $ = function (s) { return document.querySelector(s); };
+        var api = function (p) { return ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/' + p)); };
+        var g = function (o, a, b) { if (!o) return undefined; return o[a] !== undefined ? o[a] : o[b]; };
+        var esc = function (s) {
+            return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+            });
+        };
+
+        function card(title, body) {
+            return '<div class="bcard"><div class="bct">' + title + '</div><div class="bcb">' + body + '</div></div>';
+        }
+
+        function refreshStatus() {
+            api('status').then(function (s) {
+                var idx = g(s, 'indexStatus', 'IndexStatus') || {};
+                var meili = g(s, 'meili', 'Meili');
+                $('#statusCards').innerHTML =
+                    card('Documents', meili ? g(meili, 'documents', 'Documents') : '-') +
+                    card('Index', idx.Items || '-') +
+                    card('Last indexed', idx.LastIndexed || '-');
+            }).catch(function (e) { $('#statusCards').innerHTML = card('Status', 'error: ' + e); });
+        }
+
+        // Plain-language names for each pipeline stage the gateway trace reports.
+        var SNAME = {
+            input: 'You asked for', normalize: 'Tidied up', classify: 'What I read into it',
+            route: 'How I searched', retrieve: 'Where I looked', fuse: 'Merged the lists',
+            filter: 'Trimmed', output: 'Showed you'
+        };
+        var ORDER = ['input', 'normalize', 'classify', 'route', 'retrieve', 'fuse', 'filter', 'output'];
+
+        // One block per pipeline stage, each step on its own line: label, an optional
+        // match count on the right, and the reason underneath. Steps the gateway ruled
+        // out collapse to one dim line. Plain text, no pills.
+        function renderThinking(trace) {
+            var by = {};
+            trace.forEach(function (s) {
+                var st = s.stage; if (!by[st]) by[st] = {};
+                var k = s.id != null ? s.id : s.label;
+                by[st][k] = by[st][k] ? Object.assign(by[st][k], s) : Object.assign({}, s);
+            });
+            var html = '';
+            ORDER.forEach(function (st) {
+                if (!by[st]) return;
+                var steps = Object.keys(by[st]).map(function (k) { return by[st][k]; });
+                var on = steps.filter(function (n) { return n.taken; });
+                var off = steps.filter(function (n) { return !n.taken; });
+                if (!on.length) return;
+                var rows = on.map(function (n) {
+                    var l = (n.plain && n.plain.label) || n.label || '';
+                    var why = (n.plain && n.plain.reason) || n.reason || '';
+                    return '<li class="tstep"><span class="tlabel">' + esc(l)
+                        + (why ? '<span class="twhy">' + esc(why) + '</span>' : '') + '</span>'
+                        + (n.n != null ? '<span class="tcount">' + n.n + '</span>' : '') + '</li>';
+                }).join('');
+                var offRow = off.length ? '<li class="toff">' + off.length + ' ruled out ('
+                    + esc(off.map(function (n) { return (n.plain && n.plain.label) || n.label || ''; }).join(', ')) + ')</li>' : '';
+                html += '<section class="tstage"><h4>' + esc(SNAME[st] || st) + '</h4>'
+                    + '<ul class="tsteps">' + rows + offRow + '</ul></section>';
+            });
+            return html || '<p class="dim">no trace</p>';
+        }
+
+        function renderResults(hits) {
+            if (!hits || !hits.length) return '<li class="dim">no results</li>';
+            return hits.map(function (h) {
+                var name = g(h, 'name', 'Name') || '?';
+                var year = g(h, 'year', 'ProductionYear') || g(h, 'productionYear', '') || '';
+                var score = h.fused != null ? h.fused : g(h, 'score', 'Score');
+                var legNames = Object.keys(h.sources || {});
+                var legs = legNames.length ? '<div class="rlegs">found via ' + legNames.map(esc).join(' &middot; ') + '</div>' : '';
+                var cast = h.cast_hits ? '<span class="ch">cast ' + h.cast_hits + '</span>' : '';
+                var phrase = h.matched_phrase ? '<div class="mp">&ldquo;' + esc(h.matched_phrase) + '&rdquo;</div>' : '';
+                var sc = score != null ? (typeof score === 'number' ? score.toFixed(3) : score) : '';
+                return '<li><div class="rh"><span class="rn">' + esc(name) + '</span>'
+                    + (year ? ' <span class="ryr">(' + esc(year) + ')</span>' : '')
+                    + (cast ? ' ' + cast : '')
+                    + (sc !== '' ? '<span class="rsc">' + sc + '</span>' : '') + '</div>'
+                    + legs + phrase + '</li>';
+            }).join('');
+        }
+
+        function run() {
+            var q = $('#q').value.trim(); if (!q) return;
+            $('#split').style.display = 'flex';
+            $('#think').innerHTML = '<p class="dim">thinking…</p>';
+            $('#results').innerHTML = '<li class="dim">searching…</li>';
+            ApiClient.getJSON(ApiClient.getUrl('meilisearch/semantic/debug', { q: q })).then(function (r) {
+                $('#rawpre').textContent = JSON.stringify(g(r, 'parsed', 'Parsed'), null, 2);
+                var gw = g(r, 'gateway', 'Gateway');
+                if (gw && gw.trace && gw.trace.length) {
+                    var gi = gw.intent || {};
+                    $('#thinkMeta').textContent = gi.mode ? '· ' + gi.mode + ' route' : '';
+                    $('#think').innerHTML = renderThinking(gw.trace);
+                    $('#resMeta').textContent = 'server';
+                    $('#results').innerHTML = renderResults(gw.results);
+                    return;
+                }
+                // Without a server there is nothing to explain: keyword search has
+                // no reasoning to show, and the plugin no longer does any of its own.
+                $('#thinkMeta').textContent = '';
+                $('#think').innerHTML = '<p class="dim">No search server is configured, so this search ran as '
+                    + 'plain keyword search. The step-by-step reasoning comes from the search server.</p>';
+                var sem = g(r, 'semantic', 'Semantic'), bm = g(r, 'bm25', 'Bm25');
+                var useSem = sem && (g(sem, 'hits', 'Hits') || []).length;
+                var block = useSem ? sem : bm;
+                $('#resMeta').textContent = useSem ? 'in-plugin semantic' : 'keyword';
+                $('#results').innerHTML = renderResults(block ? (g(block, 'hits', 'Hits') || []) : []);
+            }).catch(function (e) {
+                $('#think').innerHTML = '<p class="dim">error: ' + esc(e && e.message || e) + '</p>';
+                $('#results').innerHTML = '';
+            });
+        }
+
+        function refreshAnalytics() {
+            api('analytics').then(function (a) {
+                var list = function (title, items, f) {
+                    items = items || [];
+                    return '<div><b>' + title + '</b><ol>'
+                        + (items.map(f).join('') || '<li class="dim">none</li>') + '</ol></div>';
+                };
+                var modes = g(a, 'byMode', 'ByMode') || {};
+                var modeTxt = Object.keys(modes).map(function (k) { return k + ': ' + modes[k]; }).join(', ') || '-';
+                var item = function (x) {
+                    return '<li>' + esc(g(x, 'term', 'Term')) + ' <span class="dim">&times;' + g(x, 'count', 'Count') + '</span></li>';
+                };
+                $('#analytics').innerHTML =
+                    card('Searches', g(a, 'total', 'Total')) + card('Avg', g(a, 'avgMs', 'AvgMs') + ' ms') + card('Modes', modeTxt) +
+                    list('Top queries', g(a, 'topQueries', 'TopQueries'), item) +
+                    list('Zero results', g(a, 'zeroResults', 'ZeroResults'), item);
+            }).catch(function (e) { $('#analytics').textContent = 'error: ' + e; });
+        }
+
+        $('#run').addEventListener('click', run);
+        $('#q').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+
+        $('#BloomPage').addEventListener('pageshow', function () { refreshStatus(); refreshAnalytics(); });
+    })();
+    </script>
+</div>
+</body>
+</html>

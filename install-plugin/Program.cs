@@ -2,7 +2,7 @@
 
 Console.OutputEncoding = Encoding.UTF8;
 var buildPath = Path.GetFullPath("src/bin/Debug/publish");
-var pluginPath = Path.GetFullPath("jellyfin/data/plugins/Meilisearch");
+var pluginPath = Path.GetFullPath("jellyfin/data/plugins/Bloom");
 var files = new[]
 {
     "Jellyfin.Plugin.Meilisearch.dll",
